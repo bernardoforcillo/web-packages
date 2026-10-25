@@ -1,0 +1,22 @@
+{
+  "name": "web-packages",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "test": "turbo run test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.12",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "husky": "^9.1.7",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

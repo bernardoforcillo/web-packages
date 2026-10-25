@@ -1,0 +1,9 @@
+staged=$(git diff --cached --name-only)
+
+if echo "$staged" | grep -qE '^packages/.*\.(ts|tsx|json)$'; then
+  pnpm --filter "./packages/*" typecheck || exit 1
+fi
+
+if echo "$staged" | grep -qE '^crates/.*\.(rs|toml)$'; then
+  (cd crates/vite-serve && cargo fmt --check && cargo clippy -- -D warnings) || exit 1
+fi
