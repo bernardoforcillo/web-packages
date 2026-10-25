@@ -8,7 +8,6 @@ repository = "https://github.com/bernardoforcillo/web-packages"
 readme = "readme.md"
 keywords = ["vite", "seo", "spa", "ssr", "server"]
 categories = ["web-programming::http-server"]
-publish = false
 
 [lib]
 name = "vite_serve"

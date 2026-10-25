@@ -48,7 +48,10 @@ scripts to plug it into the Turborepo tasks.
 2. Run `pnpm version-packages` to update versions and changelogs. This also keeps
    the version of the `vite-serve` crate (`Cargo.toml`, `Cargo.lock`) in step
    with its `package.json`.
-3. Publish with `pnpm release` once npm access is configured.
+3. Automated releases publish to npm and crates.io after the repository has the
+   `NPM_TOKEN` and `CARGO_REGISTRY_TOKEN` Actions secrets configured. To publish
+   locally with `pnpm release`, configure equivalent npm and Cargo credentials
+   in your environment.
 
 Publish packages under the `@bernardoforcillo` scope and make sure the npm
 account has permission to use it.
