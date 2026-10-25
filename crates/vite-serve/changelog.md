@@ -4,4 +4,4 @@
 
 ### Minor Changes
 
-- Initial release of vite-serve: a Rust server and library that inject SEO tags into the `index.html` of a Vite SPA.
+- 1bc6fab: Add a static server and Rust library that inject per-route head tags into a Vite SPA and negotiate `Accept: text/markdown` with `Vary` and `Link` headers.
