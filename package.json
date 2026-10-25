@@ -8,6 +8,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-cargo-version.mjs",
     "release": "pnpm build && changeset publish",
+    "release:tag": "pnpm build && changeset tag",
     "test": "turbo run test",
     "prepare": "husky"
   },
