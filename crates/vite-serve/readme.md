@@ -13,7 +13,8 @@ command-line **binary** (a thin wrapper around the library).
 
 ```toml
 [dependencies]
-vite-serve = { version = "0.1", default-features = false }
+# Not published to crates.io: depend on the repository (or use `path = "..."`).
+vite-serve = { git = "https://github.com/bernardoforcillo/web-packages", default-features = false }
 ```
 
 With `default-features = false`, `clap` and `tracing-subscriber` are not compiled

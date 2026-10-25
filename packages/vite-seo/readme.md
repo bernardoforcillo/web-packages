@@ -257,7 +257,7 @@ Post body.
 
 Frontmatter fields: `title`, `description`, `date`, `updated`, `tags` (a list
 or a single value), `url` (overrides the derived URL) and `draft` (`true` skips
-the file). The title falls back to the first `# heading`, then to the file name.
+the file). The title falls back to the first `# heading`, then to the last segment of the slug (`index.md` gives "index").
 
 - The URL comes from the path inside `dir`: `blog/hello.md` is `/blog/hello`,
   `blog/index.md` is `/blog`, `index.md` is `/`. `baseUrl` prefixes the URL
@@ -383,7 +383,7 @@ viteSeo({
   to markdown after dropping `nav`, `header`, `footer`, `aside`, `script`,
   `style`, `noscript`, `svg` and `template`. Tables become GFM tables; relative
   links and images are resolved (absolute with `siteUrl`). The page title is the
-  route `head` title, else the first `<h1>`.
+  route `head` title, else the first `<h1>`, else the absolute route URL.
 - **Skipped (with a warning)**: dynamic routes (parameters, `loader`,
   `beforeLoad` or a failing `head`), routes that fail to load or render,
   redirects, not-found matches, and pages that render empty (client-only
@@ -426,7 +426,8 @@ Contract, `version: 1`:
 
 - `path`: full route path, with parameters in TanStack form (`$postId`).
 - `dynamic`: `true` if the route has parameters, a `loader` or a `beforeLoad`
-  (along its chain), or if its `head` fails when evaluated.
+  (along its chain), or if its `head` fails when evaluated. Static routes whose
+  merged head is empty are left out of `routes` altogether.
 - `head`: present only when `dynamic` is `false`. Dynamic routes carry no
   `head`. A static route is emitted with the merged `head` of the whole chain,
   from the root to the leaf (later entries replace those with the same key).
@@ -463,7 +464,7 @@ Full example of a static route:
   attribute is written `hrefLang` (not `hreflang`), as in React.
 - `scripts`: list of `{ type, children }`, rendered as `<script type="...">`.
   For JSON-LD, `children` is the already serialized JSON string (with `<`
-  written as `<`).
+  escaped as `\u003c`).
 - `cache`: optional. `false` means "do not cache" (`no-store`);
   `{ "revalidate": n }` means a shared cache of `n` seconds
   (`public, s-maxage=n`). The value is only carried in the manifest: whoever

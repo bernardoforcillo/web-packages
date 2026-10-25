@@ -6,7 +6,6 @@ versions and releases.
 
 ## Requirements
 
-- Node.js 20 or later
 - pnpm 9 or later
 - A stable Rust toolchain (only for `crates/vite-serve`)
 
