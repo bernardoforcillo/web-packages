@@ -7,7 +7,7 @@ import { loadContent } from "./content";
 import type { ContentOptions } from "./content";
 import { atomToXml, jsonFeedToJson, rssToXml } from "./feed";
 import { llmsFullToTxt, llmsToTxt, markdownForEntry } from "./llms";
-import { prerenderRoutes } from "./prerender";
+import { PrerenderDependencyError, prerenderRoutes } from "./prerender";
 import type { PrerenderOptions } from "./prerender";
 import { buildSeoRoutes } from "./routes";
 import { manifestToJson, robotsToTxt, sitemapToXml } from "./serialize";
@@ -44,6 +44,8 @@ type Generated = {
   tree?: unknown;
 };
 
+/** How long a degraded dev context (tree/prerender failure) is reused before retrying. */
+const DEGRADED_TTL_MS = 10_000;
 const EXTENSIONS = [".ts", ".js"];
 const MANIFEST_PATH = "/manifest.webmanifest";
 const MD_TYPE = "text/markdown; charset=utf-8";
@@ -127,10 +129,65 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
     return tree;
   }
 
-  async function generate(loader: Loader): Promise<Generated> {
+  type Context = {
+    content: ContentEntry[];
+    pages: ContentEntry[];
+    tree?: unknown;
+    /** Cacheable notices (forwarded with this.warn / the dev logger). */
+    warnings: string[];
+    /** Dev only: failures that degraded the context to `pages: []`; such a context is not cached. */
+    degraded: string[];
+  };
+
+  const msgOf = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+  /** The expensive part: content + route tree + prerendered pages. Build fails on errors; dev degrades. */
+  async function loadContext(loader: Loader, mode: "build" | "dev"): Promise<Context> {
+    const warnings: string[] = [];
+    const degraded: string[] = [];
+    // Content is read once, before the convention files, and only when the option is set.
+    const content = options.content ? await loadContent(options.content, root) : [];
+
+    const prerender = prerenderOptions();
+    const explicit = options.markdown?.prerender !== undefined && options.markdown.prerender !== false;
+    const treeFile = routeTreeFile();
+    let tree: unknown;
+    let pages: ContentEntry[] = [];
+    if (treeFile && (mode === "build" || prerender)) {
+      try {
+        tree = await loadTree(loader, treeFile);
+      } catch (err) {
+        if (mode === "build") throw err;
+        degraded.push(msgOf(err));
+      }
+    }
+    if (tree && prerender) {
+      const load = (id: string) =>
+        loader.ssrLoadModule(id.startsWith(".") || id.startsWith("/") ? resolve(root, id) : id);
+      try {
+        const result = await prerenderRoutes(tree, { ...prerender, root, siteUrl: options.siteUrl, load });
+        warnings.push(...result.warnings);
+        const covered = new Set(content.map((e) => e.url));
+        pages = result.pages.filter((p) => !covered.has(p.url));
+      } catch (err) {
+        if (err instanceof PrerenderDependencyError && !explicit) {
+          warnings.push(`${msgOf(err)} (prerender skipped; install "${err.pkg}" or set markdown.prerender to false)`);
+        } else if (mode === "dev") {
+          degraded.push(msgOf(err));
+        } else {
+          throw err;
+        }
+      }
+    }
+    return { content, pages, tree, warnings, degraded };
+  }
+
+  /** Cheap part: runs the convention files against the context. `want` limits what is produced. */
+  async function produce(loader: Loader, context: Context, want?: Set<string>): Promise<Generated> {
+    const { content, pages, tree, warnings } = context;
+    const wants = (k: string) => !want || want.has(k);
     const out = new Map<string, Output>();
     const origins = new Map<string, string>();
-    const warnings: string[] = [];
     const add = (name: string, output: Output, origin: string) => {
       const prior = origins.get(name);
       if (prior !== undefined || (RESERVED.has(name) && origin.startsWith("entry:"))) {
@@ -142,22 +199,6 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
       out.set(name, output);
     };
 
-    // Content is read once, before the convention files, and only when the option is set.
-    const content = options.content ? await loadContent(options.content, root) : [];
-
-    const treeFile = routeTreeFile();
-    const tree = treeFile ? await loadTree(loader, treeFile) : undefined;
-    const prerender = prerenderOptions();
-    let pages: ContentEntry[] = [];
-    if (tree && prerender) {
-      const load = (id: string) =>
-        loader.ssrLoadModule(id.startsWith(".") || id.startsWith("/") ? resolve(root, id) : id);
-      const result = await prerenderRoutes(tree, { ...prerender, root, siteUrl: options.siteUrl, load });
-      warnings.push(...result.warnings);
-      const covered = new Set(content.map((e) => e.url));
-      pages = result.pages.filter((p) => !covered.has(p.url));
-    }
-
     const ctx: ConventionContext = { content, pages };
     if (options.siteUrl !== undefined) ctx.siteUrl = options.siteUrl;
 
@@ -167,11 +208,11 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
     const feedFile = find("feed");
     const llmsFile = find("llms");
 
-    if (sitemapFile) {
+    if (sitemapFile && wants("sitemap")) {
       const sitemap = await resolveDefault<MetadataRoute.Sitemap>(loader, sitemapFile, ctx);
       add("sitemap.xml", { type: "application/xml", body: sitemapToXml(sitemap) }, "sitemap");
     }
-    if (robotsFile) {
+    if (robotsFile && wants("robots")) {
       const robots = await resolveDefault<MetadataRoute.Robots>(loader, robotsFile, ctx);
       let body = robotsToTxt(robots);
       if (sitemapFile && !robots.sitemap && options.siteUrl) {
@@ -179,7 +220,7 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
       }
       add("robots.txt", { type: "text/plain", body }, "robots");
     }
-    if (manifestFile) {
+    if (manifestFile && wants("manifest")) {
       const manifest = await resolveDefault<MetadataRoute.Manifest>(loader, manifestFile, ctx);
       add(
         "manifest.webmanifest",
@@ -189,7 +230,7 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
     }
 
     let feedInfo: Generated["feed"];
-    if (feedFile) {
+    if (feedFile && wants("feed")) {
       const feed = await resolveDefault<MetadataRoute.Feed>(loader, feedFile, ctx);
       const formats = [...new Set<FeedFormat>(feed.formats ?? ["rss"])];
       for (const format of formats) {
@@ -205,7 +246,7 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
     }
 
     const all = [...content, ...pages];
-    if (llmsFile) {
+    if (llmsFile && wants("llms")) {
       const llms = await resolveDefault<MetadataRoute.Llms>(loader, llmsFile, ctx);
       add("llms.txt", { type: TEXT_TYPE, body: llmsToTxt(llms, options.siteUrl) }, "llms");
       if (all.length > 0) {
@@ -213,7 +254,7 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
       }
     }
 
-    for (const entry of all) {
+    for (const entry of wants("md") ? all : []) {
       add(markdownFileName(entry), { type: MD_TYPE, body: markdownForEntry(entry) }, `entry:${entry.file}`);
     }
 
@@ -221,19 +262,52 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
   }
 
   let devServer: ViteDevServer | undefined;
-  let devCache: Promise<Generated> | undefined;
+  let devCache: Promise<Context> | undefined;
+  /** Set when the cached context is degraded; it is reused until DEGRADED_TTL_MS has passed. */
+  let degradedAt: number | undefined;
+  const loggedDev = new Set<string>();
   /** Result of the build run, read by transformIndexHtml (our generateBundle runs before Vite's HTML one). */
   let built: Generated | undefined;
 
-  const devGenerated = (): Promise<Generated> => {
-    if (!devCache) {
-      const pending = generate(devServer!);
-      devCache = pending;
-      pending.catch(() => {
-        if (devCache === pending) devCache = undefined;
-      });
+  const logDev = (message: string) => {
+    if (loggedDev.has(message)) return;
+    loggedDev.add(message);
+    devServer?.config.logger.warn(`[vite-seo] ${message}`);
+  };
+
+  /** Dev cache holds only the expensive context; a degraded one is retried on the next request. */
+  const devContext = (): Promise<Context> => {
+    if (devCache) {
+      if (degradedAt === undefined || Date.now() - degradedAt < DEGRADED_TTL_MS) return devCache;
+      devCache = undefined;
+      degradedAt = undefined;
     }
-    return devCache;
+    const pending = loadContext(devServer!, "dev").then((ctx) => {
+      for (const w of [...ctx.warnings, ...ctx.degraded]) logDev(w);
+      if (ctx.degraded.length > 0) {
+        if (devCache === pending) degradedAt = Date.now();
+      } else {
+        degradedAt = undefined;
+        loggedDev.clear();
+      }
+      return ctx;
+    });
+    devCache = pending;
+    degradedAt = undefined;
+    pending.catch(() => {
+      if (devCache === pending) devCache = undefined;
+    });
+    return pending;
+  };
+
+  const devKind = (name: string): string | undefined => {
+    if (name === "sitemap.xml") return "sitemap";
+    if (name === "robots.txt") return "robots";
+    if (name === "manifest.webmanifest") return "manifest";
+    if (name === "feed.xml" || name === "atom.xml" || name === "feed.json") return "feed";
+    if (name === "llms.txt" || name === "llms-full.txt") return "llms";
+    if (name.endsWith(".md")) return "md";
+    return undefined;
   };
 
   return {
@@ -245,18 +319,27 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
     configureServer(server) {
       devServer = server;
       devCache = undefined;
+      degradedAt = undefined;
+      loggedDev.clear();
       server.middlewares.use(async (req, res, next) => {
-        const path = (req.url ?? "").split("?")[0];
-        const name = path.replace(/^\//, "");
-        if (!SERVED_AT_ROOT.has(name) && !name.endsWith(".md")) return next();
+        const url = req.url ?? "";
+        // Vite module requests (`/src/notes.md?raw`) are none of our business.
+        if (url.includes("?")) return next();
+        const name = url.replace(/^\//, "");
+        const kind = devKind(name);
+        if (!kind) return next();
         try {
-          const { files } = await devGenerated();
-          const file = files.get(name);
+          const generated = await produce(server, await devContext(), new Set([kind]));
+          const file = generated.files.get(name);
           if (!file) return next();
           res.statusCode = 200;
           res.setHeader("Content-Type", file.type);
           res.end(file.body);
         } catch (err) {
+          if (kind === "md") {
+            logDev(msgOf(err));
+            return next();
+          }
           next(err);
         }
       });
@@ -267,9 +350,9 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
         tags.push({ tag: "link", attrs: { rel: "manifest", href: MANIFEST_PATH }, injectTo: "head" });
       }
       let feed = built?.feed;
-      if (!built && devServer) {
+      if (!built && devServer && find("feed")) {
         try {
-          feed = (await devGenerated()).feed;
+          feed = (await produce(devServer, await devContext(), new Set(["feed"]))).feed;
         } catch {
           feed = undefined;
         }
@@ -309,7 +392,8 @@ export function viteSeo(options: ViteSeoOptions = {}): Plugin {
         optimizeDeps: { noDiscovery: true },
       });
       try {
-        const generated = await generate(loader);
+        const context = await loadContext(loader, "build");
+        const generated = await produce(loader, context);
         for (const warning of generated.warnings) this.warn(warning);
         for (const [fileName, { body }] of generated.files) {
           this.emitFile({ type: "asset", fileName, source: body });

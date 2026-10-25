@@ -4,6 +4,11 @@
   "description": "Next.js-style Metadata API for TanStack Router and Vite",
   "type": "module",
   "license": "MIT",
+  "author": {
+    "name": "Bernardo Forcillo",
+    "email": "me@bernardoforcillo.com",
+    "url": "https://github.com/bernardoforcillo"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -33,9 +38,17 @@
   },
   "peerDependencies": {
     "@tanstack/react-router": "^1",
+    "react": "^19",
+    "react-dom": "^19",
     "vite": ">=6"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
     "vite": {
       "optional": true
     }

@@ -3,10 +3,25 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { XMLValidator } from "fast-xml-parser";
-import { build, createServer } from "vite";
+import { build, createLogger, createServer } from "vite";
 import type { Rollup } from "vite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { viteSeo } from "./index";
+import { PrerenderDependencyError, prerenderRoutes } from "./prerender";
+
+vi.mock("./prerender", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./prerender")>();
+  return { ...actual, prerenderRoutes: vi.fn(actual.prerenderRoutes) };
+});
+
+function captureLogger(messages: string[]) {
+  const logger = createLogger("info");
+  logger.warn = (m) => void messages.push(m);
+  logger.warnOnce = (m) => void messages.push(m);
+  logger.info = () => undefined;
+  logger.error = () => undefined;
+  return logger;
+}
 
 const dirs: string[] = [];
 
@@ -350,36 +365,36 @@ describe("viteSeo output collisions", () => {
   }, 60000);
 });
 
-describe("viteSeo content dev", () => {
-  async function dev(options: Parameters<typeof viteSeo>[0], root = contentSite) {
-    const server = await createServer({
-      root,
-      configFile: false,
-      logLevel: "silent",
-      appType: "custom",
-      server: { middlewareMode: true, ws: false },
-      plugins: [viteSeo(options)],
+async function dev(options: Parameters<typeof viteSeo>[0], root = contentSite, warns: string[] = []) {
+  const server = await createServer({
+    root,
+    configFile: false,
+    customLogger: captureLogger(warns),
+    appType: "custom",
+    server: { middlewareMode: true, ws: false },
+    plugins: [viteSeo(options)],
+  });
+  const call = (url: string) =>
+    new Promise<{ status: number; type: string; body: string } | "next">((resolve, reject) => {
+      const headers: Record<string, string> = {};
+      const res = {
+        statusCode: 200,
+        setHeader: (k: string, v: string) => void (headers[k.toLowerCase()] = v),
+        getHeader: (k: string) => headers[k.toLowerCase()],
+        write: () => undefined,
+        end: (c?: string) =>
+          resolve({ status: res.statusCode, type: headers["content-type"] ?? "", body: String(c ?? "") }),
+      };
+      server.middlewares(
+        { url, method: "GET", headers: {} } as never,
+        res as never,
+        (err?: unknown) => (err ? reject(err) : resolve("next")),
+      );
     });
-    const call = (url: string) =>
-      new Promise<{ status: number; type: string; body: string } | "next">((resolve, reject) => {
-        const headers: Record<string, string> = {};
-        const res = {
-          statusCode: 200,
-          setHeader: (k: string, v: string) => void (headers[k.toLowerCase()] = v),
-          getHeader: (k: string) => headers[k.toLowerCase()],
-          write: () => undefined,
-          end: (c?: string) =>
-            resolve({ status: res.statusCode, type: headers["content-type"] ?? "", body: String(c ?? "") }),
-        };
-        server.middlewares(
-          { url, method: "GET", headers: {} } as never,
-          res as never,
-          (err?: unknown) => (err ? reject(err) : resolve("next")),
-        );
-      });
-    return { server, call };
-  }
+  return { server, call };
+}
 
+describe("viteSeo content dev", () => {
   it("serves feed, llms and markdown with the right MIME types and next() otherwise", async () => {
     const { server, call } = await dev({ siteUrl: "https://example.com", content: { dir: "content" } });
     try {
@@ -392,7 +407,7 @@ describe("viteSeo content dev", () => {
       const full = (await call("/llms-full.txt")) as { type: string; body: string };
       expect(full.type).toBe("text/plain; charset=utf-8");
       expect(full.body).toContain("ABOUT-ROUTE-TEXT");
-      const md = (await call("/blog/ciao.md?x=1")) as { type: string; body: string };
+      const md = (await call("/blog/ciao.md")) as { type: string; body: string };
       expect(md.type).toBe("text/markdown; charset=utf-8");
       expect(md.body).toContain("Corpo del post");
       expect(((await call("/index.md")) as { type: string }).type).toBe("text/markdown; charset=utf-8");
@@ -418,5 +433,177 @@ describe("viteSeo content dev", () => {
     } finally {
       await server.close();
     }
+  }, 60000);
+});
+
+describe("viteSeo dev regressions", () => {
+  it("regenerates sitemap per request: an edited convention file shows on the next request", async () => {
+    const root = site({ "src/sitemap.js": `export default [{ url: "https://example.com/one" }];` });
+    const { server, call } = await dev({}, root);
+    try {
+      expect(((await call("/sitemap.xml")) as { body: string }).body).toContain("/one");
+      writeFileSync(join(root, "src/sitemap.js"), `export default [{ url: "https://example.com/two" }];`);
+      // Deterministic: invalidate the SSR module graph explicitly instead of waiting for chokidar.
+      server.moduleGraph?.invalidateAll();
+      (server as unknown as { environments?: { ssr?: { moduleGraph?: { invalidateAll(): void } } } }).environments?.ssr?.moduleGraph?.invalidateAll();
+      let body = ((await call("/sitemap.xml")) as { body: string }).body;
+      for (let i = 0; i < 10 && !body.includes("/two"); i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        body = ((await call("/sitemap.xml")) as { body: string }).body;
+      }
+      expect(body).toContain("/two");
+    } finally {
+      await server.close();
+    }
+  }, 60000);
+
+  it("a broken route tree never breaks sitemap/robots/manifest in dev and warns once", async () => {
+    const root = site({
+      "src/routeTree.gen.ts": "export const nothing = 1;",
+      "src/sitemap.js": `export default [{ url: "https://example.com/a" }];`,
+      "src/robots.js": `export default { rules: { userAgent: "*", allow: "/" } };`,
+    });
+    const warns: string[] = [];
+    const { server, call } = await dev({}, root, warns);
+    try {
+      for (const url of ["/sitemap.xml", "/robots.txt", "/sitemap.xml"]) {
+        expect(((await call(url)) as { status: number }).status).toBe(200);
+      }
+      expect(warns.filter((w) => /routeTree/.test(w))).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  }, 60000);
+
+  it("a healthy pipeline falls through for Vite module requests with a query", async () => {
+    const root = site({ "src/notes.md": "# n", "content/a.md": post });
+    const { server, call } = await dev({ content: { dir: "content" } }, root);
+    try {
+      expect(await call("/src/notes.md?raw")).toBe("next");
+    } finally {
+      await server.close();
+    }
+  }, 60000);
+
+  it("a broken pipeline neither breaks /src/notes.md?raw nor an unknown /x.md", async () => {
+    const root = site({ "src/notes.md": "# n" });
+    const warns: string[] = [];
+    const { server, call } = await dev({ content: { dir: "nope" } }, root, warns);
+    try {
+      expect(await call("/src/notes.md?raw")).toBe("next");
+      expect(await call("/x.md")).toBe("next");
+      expect(await call("/y.md")).toBe("next");
+      expect(warns).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  }, 60000);
+});
+
+describe("viteSeo degraded dev context", () => {
+  const treeSrc = () => {
+    const treePath = join(dirname(fileURLToPath(import.meta.url)), "../../test-fixtures/prerender/tree")
+      .split("\\")
+      .join("/");
+    return `export { tree as routeTree } from "${treePath}";`;
+  };
+
+  it("reuses a degraded context for 10 s, then retries", async () => {
+    const root = site({
+      "src/routeTree.gen.ts": treeSrc(),
+      "src/sitemap.js": `export default [{ url: "https://example.com/a" }];`,
+    });
+    const { server, call } = await dev({}, root);
+    const spy = vi.mocked(prerenderRoutes);
+    spy.mockClear();
+    spy.mockImplementation(async () => {
+      throw new Error("render exploded");
+    });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await call("/sitemap.xml");
+      await call("/sitemap.xml");
+      expect(spy).toHaveBeenCalledTimes(1);
+      vi.setSystemTime(Date.now() + 11_000);
+      await call("/sitemap.xml");
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      spy.mockReset();
+      await server.close();
+    }
+  }, 60000);
+
+  it("transformIndexHtml does not build the context when there is no feed file", async () => {
+    const root = site({ "src/routeTree.gen.ts": treeSrc() });
+    const { server } = await dev({}, root);
+    const spy = vi.mocked(prerenderRoutes);
+    spy.mockClear();
+    spy.mockImplementation(async () => {
+      throw new Error("render exploded");
+    });
+    try {
+      await server.transformIndexHtml("/", "<html><head></head><body></body></html>");
+      expect(spy).toHaveBeenCalledTimes(0);
+    } finally {
+      spy.mockReset();
+      await server.close();
+    }
+  }, 60000);
+
+  it("reports react-dom (not react-dom/server) as the missing package", async () => {
+    const real = await vi.importActual<typeof import("./prerender")>("./prerender");
+    expect(new real.PrerenderDependencyError("react-dom", new Error("x")).pkg).toBe("react-dom");
+  });
+});
+
+describe("viteSeo prerender dependencies and warnings", () => {
+  const missing = () =>
+    vi.mocked(prerenderRoutes).mockImplementationOnce(async () => {
+      throw new PrerenderDependencyError("react", new Error("not installed"));
+    });
+
+  async function runWarn(root: string, options: Parameters<typeof viteSeo>[0]) {
+    const warns: string[] = [];
+    const result = (await build({
+      root,
+      configFile: false,
+      customLogger: captureLogger(warns),
+      plugins: [viteSeo(options)],
+      build: { write: false, outDir: join(root, "dist") },
+    })) as Rollup.RollupOutput | Rollup.RollupOutput[];
+    const out = Array.isArray(result) ? result[0] : result;
+    return { warns, names: out.output.map((o) => o.fileName) };
+  }
+
+  it("default prerender: a missing react warns once and skips the pages", async () => {
+    missing();
+    const { warns, names } = await runWarn(contentSite, { content: { dir: "content" } });
+    expect(warns.filter((w) => /react/.test(w) && /prerender/i.test(w))).toHaveLength(1);
+    expect(names).not.toContain("about.md");
+    expect(names).toContain("blog/ciao.md");
+  }, 60000);
+
+  it("explicit prerender: true keeps the missing dependency an error", async () => {
+    missing();
+    await expect(
+      runWarn(contentSite, { content: { dir: "content" }, markdown: { prerender: true } }),
+    ).rejects.toThrow(/react/);
+  }, 60000);
+
+  it("explicit prerender options object keeps it an error", async () => {
+    missing();
+    await expect(
+      runWarn(contentSite, { content: { dir: "content" }, markdown: { prerender: {} } }),
+    ).rejects.toThrow(/react/);
+  }, 60000);
+
+  it("forwards prerender warnings of a throwing route and still builds", async () => {
+    const treePath = join(dirname(fileURLToPath(import.meta.url)), "../../test-fixtures/prerender/tree").split("\\").join("/");
+    const root = site({ "src/routeTree.gen.ts": `export { tree as routeTree } from "${treePath}";` });
+    const { warns, names } = await runWarn(root, {});
+    expect(warns.some((w) => w.includes('"/boom"'))).toBe(true);
+    expect(names).toContain("docs/guide.md");
+    expect(names).not.toContain("boom.md");
   }, 60000);
 });

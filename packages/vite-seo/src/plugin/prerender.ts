@@ -23,6 +23,21 @@ export type PrerenderOptions = {
   strict?: boolean;
 };
 
+/** Thrown when `react` / `react-dom/server` cannot be imported, so the plugin can degrade when prerender is only on by default. */
+export class PrerenderDependencyError extends Error {
+  constructor(
+    readonly pkg: string,
+    cause: unknown,
+    specifier: string = pkg,
+  ) {
+    super(
+      `vite-seo: prerender requires "${specifier}" but it cannot be imported: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = "PrerenderDependencyError";
+  }
+}
+
 const DROPPED = "nav, header, footer, aside, script, style, noscript, svg, template";
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
@@ -156,12 +171,12 @@ export async function prerenderRoutes(
     const react = await import("react");
     createElement = react.createElement as never;
   } catch (err) {
-    throw new Error(`vite-seo: prerender requires "react" but it cannot be imported: ${msg(err)}`);
+    throw new PrerenderDependencyError("react", err);
   }
   try {
     renderToString = (await import("react-dom/server")).renderToString as never;
   } catch (err) {
-    throw new Error(`vite-seo: prerender requires "react-dom/server" but it cannot be imported: ${msg(err)}`);
+    throw new PrerenderDependencyError("react-dom", err, "react-dom/server");
   }
   {
     const tsr = await import("@tanstack/react-router");
