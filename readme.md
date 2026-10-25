@@ -1,49 +1,67 @@
 # web-packages
 
-Monorepo pnpm per package React e TypeScript. Turborepo esegue build e controlli
-coordinando le dipendenze tra package; Changesets gestisce versioni e release.
+pnpm monorepo for React and TypeScript packages, plus a Rust crate. Turborepo
+runs builds and checks across packages in dependency order; Changesets manages
+versions and releases.
 
-## Requisiti
+## Requirements
 
-- Node.js 20 o successivo
-- pnpm 9 o successivo
+- Node.js 20 or later
+- pnpm 9 or later
+- A stable Rust toolchain (only for `crates/vite-serve`)
 
-## Avvio
+## Getting started
 
 ```sh
 pnpm install
 pnpm build
 pnpm typecheck
+pnpm test
 ```
 
-## Package
+## Packages
 
-- `@bernardoforcillo/vite-seo`: API Metadata in stile Next.js per TanStack Router e Vite; vedi [packages/vite-seo/README.md](packages/vite-seo/README.md).
-- `vite-serve` (crate Rust in `crates/vite-serve`): server e libreria che iniettano i tag SEO nell'`index.html` di una SPA Vite; vedi [crates/vite-serve/README.md](crates/vite-serve/README.md).
+| Package | Path | Description |
+| --- | --- | --- |
+| `@bernardoforcillo/vite-seo` | [packages/vite-seo](packages/vite-seo/readme.md) | Next.js-style Metadata API for TanStack Router and Vite: JSON-LD graph, sitemap, robots, manifest, RSS/Atom/JSON feeds, `llms.txt` and per-page markdown. |
+| `vite-serve` (Rust crate, npm name `@bernardoforcillo/vite-serve`) | [crates/vite-serve](crates/vite-serve/readme.md) | Server and library that inject per-route SEO tags into the `index.html` of a Vite SPA and answer `Accept: text/markdown`. |
 
-## Aggiungere un package
+## Commands
 
-Per aggiungere un package, crea una nuova cartella in `packages/` con il suo
-`package.json`; pnpm lo includerà automaticamente. Aggiungi gli script `build`
-e `typecheck` per integrarlo nei task di Turborepo.
+| Command | Description |
+| --- | --- |
+| `pnpm build` | Build every package (`cargo build --release` for the crate). |
+| `pnpm typecheck` | Type-check every package (`cargo check` for the crate). |
+| `pnpm test` | Run every test suite (`vitest`, `cargo test`). |
+| `pnpm changeset` | Describe a change and its release type. |
+| `pnpm version-packages` | Apply changesets, then sync the crate version into `Cargo.toml` and `Cargo.lock`. |
+| `pnpm release` | Build and publish with Changesets. |
 
-## Versioni e pubblicazione
+## Adding a package
 
-1. Esegui `pnpm changeset` e descrivi i package modificati e il tipo di release.
-2. Esegui `pnpm version-packages` per aggiornare versioni e changelog.
-3. Pubblica con `pnpm release` dopo aver configurato l'accesso a npm.
+To add a package, create a new folder in `packages/` with its own
+`package.json`; pnpm includes it automatically. Add `build` and `typecheck`
+scripts to plug it into the Turborepo tasks.
 
-Pubblica i package con lo scope `@bernardoforcillo` e verifica che l'account npm
-abbia i permessi per usarlo.
+## Versions and publishing
 
-## Contribuire
+1. Run `pnpm changeset` and describe the changed packages and the release type.
+2. Run `pnpm version-packages` to update versions and changelogs. This also keeps
+   the version of the `vite-serve` crate (`Cargo.toml`, `Cargo.lock`) in step
+   with its `package.json`.
+3. Publish with `pnpm release` once npm access is configured.
 
-Vedi [contributing.md](contributing.md).
+Publish packages under the `@bernardoforcillo` scope and make sure the npm
+account has permission to use it.
 
-## Sicurezza
+## Contributing
 
-Per segnalare una vulnerabilità vedi [security.md](security.md).
+See [contributing.md](contributing.md).
 
-## Licenza
+## Security
+
+To report a vulnerability see [security.md](security.md).
+
+## License
 
 [MIT](license.md)

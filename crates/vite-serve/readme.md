@@ -1,0 +1,144 @@
+# vite-serve
+
+HTTP server for a SPA built with Vite: it serves the static files and, for every
+static route described in `seo-routes.json`, injects the title, meta tags, links
+and JSON-LD into the `<head>` of `index.html` before sending the response. Other
+routes get the SPA fallback (`index.html` unchanged). When the build contains
+markdown versions of pages, it also answers `Accept: text/markdown`.
+
+It is used in two ways: as a **Rust library** (the supported API) or as a
+command-line **binary** (a thin wrapper around the library).
+
+## Use as a library
+
+```toml
+[dependencies]
+vite-serve = { version = "0.1", default-features = false }
+```
+
+With `default-features = false`, `clap` and `tracing-subscriber` are not compiled
+(they are only needed by the binary, feature `cli`).
+
+```rust
+use axum::{Router, routing::get};
+use vite_serve::ViteServe;
+
+let site = ViteServe::builder()
+    .dist("./dist")                 // must contain index.html
+    // .manifest_path("./dist/seo-routes.json")
+    // .no_manifest()
+    // .html_cache_control("no-store")
+    .build()?;
+
+// Mounted in an existing axum app:
+let app = Router::new()
+    .route("/api/ping", get(|| async { "pong" }))
+    .fallback_service(site.router());
+
+// Or on its own:
+// site.serve("0.0.0.0:3000".parse()?).await?;
+```
+
+Builder methods: `dist`, `embedded` (only with the `embed` feature),
+`manifest_path`, `manifest` (an already parsed `Manifest`), `no_manifest`,
+`html_cache_control`, `build`. Manifest source precedence: `manifest` >
+`manifest_path` > `no_manifest`. If you call none of them, `build` looks for
+`<dist>/seo-routes.json` and, if it is missing, serves without injection. An
+explicit `manifest_path` that is missing, unreadable, invalid or has a `version`
+other than 1 is a `BuildError` naming the file; a `dist` that does not exist or
+has no `index.html` is a `BuildError` naming the folder.
+
+`ViteServe` is cheap to clone and `router()` can be called several times. To start
+the server: `serve(addr)`, `serve_with_shutdown(addr, future)` and
+`serve_listener_with_shutdown(listener, future)` (handy with port 0).
+
+Full example: `cargo run --example embed_in_axum -- ./dist`.
+
+## Use from the command line
+
+```sh
+cargo run --release -- --dist ./dist --port 3000
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--dist <dir>` | required (without the `embed` feature) | folder of the built SPA |
+| `--manifest <file>` | `<dist>/seo-routes.json` | route manifest |
+| `--host <host>` | `0.0.0.0` | listen address |
+| `--port <port>` | `3000` | port (0 = any free port) |
+| `--html-cache-control <value>` | none | overrides the HTML `Cache-Control` |
+
+On startup it prints `listening on http://HOST:PORT` to stdout. If the default
+manifest is missing it logs a warning and serves without injection; an invalid
+manifest, or one with an unknown `version`, exits with code 1 and a message naming
+the file. Set the log level with `RUST_LOG` (default `info`). Ctrl-C (and SIGTERM
+on unix) starts a graceful shutdown.
+
+## Markdown negotiation
+
+When the build contains markdown twins of pages (the `.md` files emitted by
+`@bernardoforcillo/vite-seo`), a client can ask for the markdown version of a
+page at the same URL:
+
+```sh
+curl -s -H "Accept: text/markdown" http://localhost:3000/blog/hello   # markdown
+curl -s http://localhost:3000/blog/hello                              # HTML
+curl -s http://localhost:3000/blog/hello.md                           # direct URL
+```
+
+- **Index built at startup.** `build()` lists the `.md` files in `dist` (or in the
+  embedded bundle) once: `x.md` and `x/index.md` serve `/x` (`x.md` wins if both
+  exist) and `index.md` serves `/`. Matching is case-sensitive. The index is not
+  refreshed if `dist` changes while the server is running: restart it.
+- **`Accept` rules.** The markdown file is chosen when `text/markdown` has
+  `q > 0` and either `text/html` is not listed, or has a lower `q`, or has an
+  equal `q` and comes later in the header. `*/*` and `text/*` never select
+  markdown, so browsers and ordinary clients keep getting HTML. Malformed items
+  are ignored.
+- **Response headers.** The markdown response is `Content-Type: text/markdown;
+  charset=utf-8` with `Vary: Accept`. Every HTML response of the SPA fallback also
+  carries `Vary: Accept` (also for paths without markdown), added next to any
+  existing `Vary` such as `Accept-Encoding`, so caches never mix the variants.
+  The HTML of a page that has a markdown twin also gets
+  `Link: </blog/hello.md>; rel="alternate"; type="text/markdown"` (for `/` the
+  target is `/index.md`).
+- **Direct URLs** such as `/blog/hello.md` are plain static files, with the same
+  path sanitisation as every other asset (`/../x` and similar stay blocked).
+- Without a markdown file for the path, an `Accept: text/markdown` request gets
+  the normal HTML.
+
+## The `seo-routes.json` contract
+
+The file is generated by the `@bernardoforcillo/vite-seo` Vite plugin: format,
+fields and JSON Schema are described in
+[packages/vite-seo/readme.md](../../packages/vite-seo/readme.md). This crate only
+accepts `version: 1`.
+
+## Build with embedded files (`embed`)
+
+```sh
+VITE_SEO_DIST=/absolute/path/to/dist cargo build --release --features embed
+./target/release/vite-serve --port 3000
+```
+
+The `VITE_SEO_DIST` folder is embedded in the binary: set it **before** the build
+and make sure it contains `index.html`. Cargo does not rebuild when the folder
+content or the variable changes: after every change run `cargo clean -p vite-serve`
+(or touch a source file) before rebuilding. From the library use `.embedded()`. In
+`embed` mode the default manifest (`seo-routes.json`) is read from the embedded
+bundle; if it is missing, the server runs without injection (with a warning in the
+CLI log), while an invalid one is a startup error. The markdown index is built from
+the embedded files too. `--manifest` / `.manifest_path(..)` stay available.
+
+## Limits
+
+- Dynamic routes (for example `/posts/$postId`) get no tags until server
+  rendering exists: they receive `index.html` unchanged.
+- Markdown negotiation only covers paths that have a `.md` file in the build; the
+  index is read at startup and is not refreshed.
+- No `/api` proxy: for APIs, mount `vite-serve` in your own axum app
+  (`fallback_service`).
+- `dist` is public: every file inside it, **including hidden ones**, is served.
+  Do not put anything private in it.
+- The public API exposes axum 0.8 types (`Router`): your app's axum version must
+  match.
