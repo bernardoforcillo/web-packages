@@ -26,9 +26,9 @@ jobs:
       # GitHub releases. Nothing is published to npm or crates.io.
       - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm version-packages
-          publish: pnpm release:tag
-          title: "chore: version packages"
-          commit: "chore: version packages"
+          version-script: pnpm version-packages
+          publish-script: pnpm release:tag
+          pr-title: "chore: version packages"
+          commit-message: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
