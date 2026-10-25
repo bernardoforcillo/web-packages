@@ -1,0 +1,1 @@
+# @bernardoforcillo/vite-seo

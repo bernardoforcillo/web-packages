@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bernardoforcillo/kruvi/packages/vite-seo/schema/seo-routes.schema.json",
+  "title": "seo-routes.json",
+  "description": "Per-route head tags emitted by the vite-seo plugin at build time and read by vite-serve (contract version 1).",
+  "type": "object",
+  "required": [
+    "version",
+    "routes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    }
+  },
+  "$defs": {
+    "route": {
+      "type": "object",
+      "required": [
+        "path",
+        "dynamic"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "dynamic": {
+          "type": "boolean"
+        },
+        "head": {
+          "$ref": "#/$defs/head"
+        }
+      },
+      "if": {
+        "properties": {
+          "dynamic": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "head": false
+        }
+      },
+      "else": {
+        "required": [
+          "head"
+        ],
+        "properties": {
+          "head": {
+            "$ref": "#/$defs/head"
+          }
+        }
+      }
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "head": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "meta": {
+          "description": "A meta entry whose only key is `title` is rendered as <title>.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stringMap"
+          }
+        },
+        "links": {
+          "description": "Link attributes; the hreflang attribute is spelled `hrefLang`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stringMap"
+          }
+        },
+        "scripts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "children"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "children": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "cache": {
+          "description": "`false` → no-store; `{ revalidate: n }` → public, s-maxage=n.",
+          "oneOf": [
+            {
+              "const": false
+            },
+            {
+              "type": "object",
+              "required": [
+                "revalidate"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "revalidate": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

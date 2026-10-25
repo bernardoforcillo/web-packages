@@ -1,0 +1,57 @@
+{
+  "name": "@bernardoforcillo/vite-seo",
+  "version": "0.0.0",
+  "description": "Next.js-style Metadata API for TanStack Router and Vite",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "changelog.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "linkedom": "^0.18.14",
+    "turndown": "^7.2.4",
+    "yaml": "^2"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "^1",
+    "vite": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "^1.170.46",
+    "@types/node": "^22",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/turndown": "^5.0.6",
+    "fast-xml-parser": "^5.2.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

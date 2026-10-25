@@ -1,0 +1,19 @@
+{
+  "name": "@bernardoforcillo/vite-serve",
+  "version": "0.0.0",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "Cargo.toml",
+    "Cargo.lock",
+    "changelog.md"
+  ],
+  "scripts": {
+    "build": "cargo build --release",
+    "typecheck": "cargo check",
+    "test": "cargo test"
+  }
+}

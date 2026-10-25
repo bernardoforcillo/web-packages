@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/bernardoforcillo/kruvi/packages/vite-seo/schema/manifest.schema.json",
+  "title": "Web App Manifest",
+  "description": "W3C Web Application Manifest, as accepted by MetadataRoute.Manifest in @bernardoforcillo/vite-seo.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "type": "string", "description": "Unique identity of the app." },
+    "name": { "type": "string" },
+    "short_name": { "type": "string" },
+    "description": { "type": "string" },
+    "start_url": { "type": "string" },
+    "scope": { "type": "string" },
+    "lang": { "type": "string", "description": "BCP 47 language tag." },
+    "dir": { "enum": ["auto", "ltr", "rtl"] },
+    "display": { "enum": ["fullscreen", "standalone", "minimal-ui", "browser"] },
+    "display_override": {
+      "type": "array",
+      "items": {
+        "enum": ["fullscreen", "standalone", "minimal-ui", "browser", "window-controls-overlay", "tabbed"]
+      }
+    },
+    "orientation": {
+      "enum": [
+        "any",
+        "natural",
+        "landscape",
+        "landscape-primary",
+        "landscape-secondary",
+        "portrait",
+        "portrait-primary",
+        "portrait-secondary"
+      ]
+    },
+    "background_color": { "type": "string" },
+    "theme_color": { "type": "string" },
+    "categories": { "type": "array", "items": { "type": "string" } },
+    "icons": { "type": "array", "items": { "$ref": "#/definitions/image" } },
+    "screenshots": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "#/definitions/image" },
+          {
+            "properties": {
+              "form_factor": { "enum": ["narrow", "wide"] },
+              "label": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "shortcuts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "url"],
+        "properties": {
+          "name": { "type": "string" },
+          "short_name": { "type": "string" },
+          "description": { "type": "string" },
+          "url": { "type": "string" },
+          "icons": { "type": "array", "items": { "$ref": "#/definitions/image" } }
+        }
+      }
+    },
+    "related_applications": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["platform"],
+        "properties": {
+          "platform": { "type": "string" },
+          "url": { "type": "string" },
+          "id": { "type": "string" }
+        }
+      }
+    },
+    "prefer_related_applications": { "type": "boolean" }
+  },
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["src"],
+      "properties": {
+        "src": { "type": "string" },
+        "sizes": { "type": "string" },
+        "type": { "type": "string" },
+        "purpose": {
+          "type": "string",
+          "description": "Space-separated list of: any, maskable, monochrome."
+        }
+      }
+    }
+  }
+}

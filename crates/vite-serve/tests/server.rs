@@ -1,0 +1,272 @@
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use axum::Router;
+use axum::body::Body;
+use axum::http::{HeaderMap, Method, Request, StatusCode, header};
+use http_body_util::BodyExt;
+use tower::ServiceExt;
+use vite_serve::assets::AssetSource;
+use vite_serve::manifest::Manifest;
+use vite_serve::route_match::RouteTable;
+use vite_serve::server::{AppState, build_app};
+
+const INDEX: &str = r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Vecchio</title>
+    <script type="module" crossorigin src="/assets/app.js"></script>
+  </head>
+  <body><div id="root"></div></body>
+</html>
+"#;
+
+const SECRET: &str = "TOP-SECRET-CONTENT-12345";
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+struct Env {
+    root: PathBuf,
+}
+
+impl Env {
+    fn new() -> Self {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let root = std::env::temp_dir().join(format!("vite-serve-t7-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dist = root.join("dist");
+        std::fs::create_dir_all(dist.join("assets")).unwrap();
+        std::fs::write(dist.join("index.html"), INDEX).unwrap();
+        std::fs::write(dist.join("assets/app.js"), "console.log(1);").unwrap();
+        std::fs::write(dist.join("robots.txt"), "User-agent: *").unwrap();
+        std::fs::write(root.join("secret.txt"), SECRET).unwrap();
+        Self { root }
+    }
+
+    fn dist(&self) -> PathBuf {
+        self.root.join("dist")
+    }
+
+    fn app(&self, manifest: &str, cache: Option<&str>) -> Router {
+        let m = Manifest::from_slice(manifest.as_bytes()).unwrap();
+        build_app(AppState {
+            assets: AssetSource::Disk(self.dist()),
+            routes: RouteTable::new(&m),
+            html_cache_control: cache.map(str::to_string),
+        })
+    }
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+const MANIFEST: &str = r#"{
+  "version": 1,
+  "routes": [
+    { "path": "/", "dynamic": false, "head": { "meta": [{ "title": "Home | Sito" }] } },
+    { "path": "/about", "dynamic": false, "head": { "meta": [{ "title": "About | Sito" }], "cache": { "revalidate": 60 } } },
+    { "path": "/off", "dynamic": false, "head": { "meta": [{ "title": "Off | Sito" }], "cache": false } },
+    { "path": "/posts/$postId", "dynamic": true }
+  ]
+}"#;
+
+async fn send(app: &Router, method: Method, uri: &str) -> (StatusCode, HeaderMap, String) {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        headers,
+        String::from_utf8_lossy(&bytes).into_owned(),
+    )
+}
+
+async fn get(app: &Router, uri: &str) -> (StatusCode, HeaderMap, String) {
+    send(app, Method::GET, uri).await
+}
+
+fn h<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
+    headers.get(name).map(|v| v.to_str().unwrap()).unwrap_or("")
+}
+
+#[tokio::test]
+async fn injects_head_for_static_routes() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, body) = get(&app, "/about").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(body.contains("<title>About | Sito</title>"), "{body}");
+    assert!(!body.contains("Vecchio"));
+    assert!(body.contains(r#"src="/assets/app.js""#));
+    assert_eq!(h(&hd, "content-type"), "text/html; charset=utf-8");
+    let (s, _, body) = get(&app, "/").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(body.contains("<title>Home | Sito</title>"));
+    assert!(body.contains(r#"src="/assets/app.js""#));
+}
+
+#[tokio::test]
+async fn dynamic_and_unknown_paths_serve_plain_index() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    for uri in ["/posts/42", "/nope/whatever"] {
+        let (s, hd, body) = get(&app, uri).await;
+        assert_eq!(s, StatusCode::OK, "{uri}");
+        assert_eq!(body, INDEX, "{uri}");
+        assert_eq!(h(&hd, "cache-control"), "no-cache", "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn serves_assets_with_mime_and_immutable_cache() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, body) = get(&app, "/assets/app.js").await;
+    assert_eq!(s, StatusCode::OK);
+    let ct = h(&hd, "content-type");
+    assert!(ct.contains("javascript"), "{ct}");
+    assert_eq!(
+        h(&hd, "cache-control"),
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(body, "console.log(1);");
+    let (s, hd, _) = get(&app, "/robots.txt").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(h(&hd, "cache-control"), "no-cache");
+}
+
+#[tokio::test]
+async fn missing_file_with_extension_is_404() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    for uri in ["/missing.js", "/assets/nope.css"] {
+        let (s, _, body) = get(&app, uri).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "{uri}");
+        assert!(!body.contains("<html"), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn traversal_never_leaks_files_outside_dist() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    for uri in [
+        "/../Cargo.toml",
+        "/%2e%2e/secret.txt",
+        "//etc/passwd",
+        "/..%2f..%2fsecret.txt",
+        "/assets/../../secret.txt",
+        "/%5c..%5csecret.txt",
+        "/..%5csecret.txt",
+        "/%2e%2e%2fsecret.txt",
+        "/assets/%00.js",
+    ] {
+        let Ok(parsed) = uri.parse::<axum::http::Uri>() else {
+            continue;
+        };
+        let req = Request::builder().uri(parsed).body(Body::empty()).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let body = String::from_utf8_lossy(&bytes);
+        assert!(!body.contains(SECRET), "{uri} leaked");
+        assert!(!body.contains("[package]"), "{uri} leaked Cargo.toml");
+    }
+}
+
+#[test]
+fn asset_source_rejects_escapes() {
+    let env = Env::new();
+    let src = AssetSource::Disk(env.dist());
+    assert!(src.get("secret.txt").is_none());
+    assert!(src.get("../secret.txt").is_none());
+    assert!(src.get("%2e%2e/secret.txt").is_none());
+    assert!(src.get("assets/../../secret.txt").is_none());
+    assert!(src.get("..\\secret.txt").is_none());
+    assert!(src.get("C:/Windows/win.ini").is_none());
+    assert!(src.get("/etc/passwd").is_none());
+    assert!(src.get("//etc/passwd").is_none());
+    assert!(
+        src.get("assets").is_none(),
+        "directories are never returned"
+    );
+    let a = src.get("assets/app.js").unwrap();
+    assert_eq!(a.bytes, b"console.log(1);");
+    assert!(a.mime.contains("javascript"));
+    assert_eq!(
+        src.get("index.html").unwrap().mime,
+        "text/html; charset=utf-8"
+    );
+}
+
+#[tokio::test]
+async fn head_matches_get_headers_with_empty_body() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (gs, gh, gb) = get(&app, "/about").await;
+    let (hs, hh, hb) = send(&app, Method::HEAD, "/about").await;
+    assert_eq!(gs, hs);
+    assert!(hb.is_empty());
+    assert!(!gb.is_empty());
+    for name in ["content-type", "cache-control"] {
+        assert_eq!(h(&gh, name), h(&hh, name), "{name}");
+    }
+}
+
+#[tokio::test]
+async fn cache_control_rules() {
+    let env = Env::new();
+    let (_, hd, _) = get(&env.app(MANIFEST, Some("no-store")), "/about").await;
+    assert_eq!(h(&hd, "cache-control"), "no-store");
+    let app = env.app(MANIFEST, None);
+    let (_, hd, _) = get(&app, "/about").await;
+    assert_eq!(h(&hd, "cache-control"), "public, s-maxage=60");
+    let (_, hd, _) = get(&app, "/off").await;
+    assert_eq!(h(&hd, "cache-control"), "no-store");
+    let (_, hd, _) = get(&app, "/").await;
+    assert_eq!(h(&hd, "cache-control"), "no-cache");
+}
+
+#[tokio::test]
+async fn method_health_and_index_html() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, _, _) = send(&app, Method::POST, "/").await;
+    assert_eq!(s, StatusCode::METHOD_NOT_ALLOWED);
+    let (s, _, body) = get(&app, "/healthz").await;
+    assert_eq!((s, body.as_str()), (StatusCode::OK, "ok"));
+    let (s, hd, body) = get(&app, "/index.html").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body, INDEX);
+    assert_eq!(h(&hd, "content-type"), "text/html; charset=utf-8");
+    assert!(hd.get(header::CACHE_CONTROL).is_some());
+}
+
+#[tokio::test]
+async fn missing_index_is_500() {
+    let env = Env::new();
+    std::fs::remove_file(env.dist().join("index.html")).unwrap();
+    let app = env.app(MANIFEST, None);
+    let (s, _, _) = get(&app, "/about").await;
+    assert_eq!(s, StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[cfg(feature = "embed")]
+#[test]
+fn embedded_source_serves_dist_and_rejects_escapes() {
+    let dist = PathBuf::from(env!("VITE_SEO_DIST"));
+    let src = AssetSource::Embedded;
+    let expected = std::fs::read(dist.join("index.html")).unwrap();
+    assert_eq!(src.get("index.html").unwrap().bytes, expected);
+    assert!(src.get("../x").is_none());
+    assert!(src.get("assets/../../x").is_none());
+}
