@@ -8,6 +8,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 use vite_serve::assets::AssetSource;
 use vite_serve::manifest::Manifest;
+use vite_serve::negotiate::MarkdownIndex;
 use vite_serve::route_match::RouteTable;
 use vite_serve::server::{AppState, build_app};
 
@@ -21,6 +22,12 @@ const INDEX: &str = r#"<!doctype html>
   <body><div id="root"></div></body>
 </html>
 "#;
+
+// Longer than the compression layer's minimum size so gzip actually applies.
+const CIAO_MD: &str = "# Ciao
+
+Questo e il testo markdown della pagina di prova, abbastanza lungo.
+";
 
 const SECRET: &str = "TOP-SECRET-CONTENT-12345";
 
@@ -41,6 +48,10 @@ impl Env {
         std::fs::write(dist.join("assets/app.js"), "console.log(1);").unwrap();
         std::fs::write(dist.join("robots.txt"), "User-agent: *").unwrap();
         std::fs::write(root.join("secret.txt"), SECRET).unwrap();
+        std::fs::write(root.join("secret.md"), SECRET).unwrap();
+        std::fs::create_dir_all(dist.join("blog")).unwrap();
+        std::fs::write(dist.join("blog/ciao.md"), CIAO_MD).unwrap();
+        std::fs::write(dist.join("index.md"), "# Home\n").unwrap();
         Self { root }
     }
 
@@ -50,9 +61,12 @@ impl Env {
 
     fn app(&self, manifest: &str, cache: Option<&str>) -> Router {
         let m = Manifest::from_slice(manifest.as_bytes()).unwrap();
+        let assets = AssetSource::Disk(self.dist());
+        let markdown = MarkdownIndex::from_paths(assets.list());
         build_app(AppState {
-            assets: AssetSource::Disk(self.dist()),
+            assets,
             routes: RouteTable::new(&m),
+            markdown,
             html_cache_control: cache.map(str::to_string),
         })
     }
@@ -75,11 +89,20 @@ const MANIFEST: &str = r#"{
 }"#;
 
 async fn send(app: &Router, method: Method, uri: &str) -> (StatusCode, HeaderMap, String) {
-    let req = Request::builder()
-        .method(method)
-        .uri(uri)
-        .body(Body::empty())
-        .unwrap();
+    send_h(app, method, uri, &[]).await
+}
+
+async fn send_h(
+    app: &Router,
+    method: Method,
+    uri: &str,
+    hdrs: &[(&str, &str)],
+) -> (StatusCode, HeaderMap, String) {
+    let mut b = Request::builder().method(method).uri(uri);
+    for (k, v) in hdrs {
+        b = b.header(*k, *v);
+    }
+    let req = b.body(Body::empty()).unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     let status = res.status();
     let headers = res.headers().clone();
@@ -269,4 +292,191 @@ fn embedded_source_serves_dist_and_rejects_escapes() {
     assert_eq!(src.get("index.html").unwrap().bytes, expected);
     assert!(src.get("../x").is_none());
     assert!(src.get("assets/../../x").is_none());
+}
+
+fn vary_values(headers: &HeaderMap) -> Vec<String> {
+    headers
+        .get_all(header::VARY)
+        .iter()
+        .flat_map(|v| v.to_str().unwrap().split(','))
+        .map(|s| s.trim().to_ascii_lowercase())
+        .collect()
+}
+
+const MD: &[(&str, &str)] = &[("accept", "text/markdown")];
+
+#[tokio::test]
+async fn negotiated_markdown_has_vary_accept_and_accept_encoding() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, _) = send_h(
+        &app,
+        Method::GET,
+        "/blog/ciao",
+        &[("accept", "text/markdown"), ("accept-encoding", "gzip")],
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(h(&hd, "content-type"), "text/markdown; charset=utf-8");
+    assert_eq!(h(&hd, "cache-control"), "no-cache");
+    let v = vary_values(&hd);
+    assert!(v.contains(&"accept".to_string()), "{v:?}");
+    assert!(v.contains(&"accept-encoding".to_string()), "{v:?}");
+    assert!(hd.get("link").is_none());
+    let (_, _, body) = send_h(&app, Method::GET, "/blog/ciao", MD).await;
+    assert_eq!(body, CIAO_MD);
+}
+
+#[tokio::test]
+async fn root_negotiates_index_md_and_trailing_slash_works() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, body) = send_h(&app, Method::GET, "/", MD).await;
+    assert_eq!((s, body.as_str()), (StatusCode::OK, "# Home\n"));
+    assert_eq!(h(&hd, "content-type"), "text/markdown; charset=utf-8");
+    let (_, _, body) = send_h(&app, Method::GET, "/blog/ciao/", MD).await;
+    assert_eq!(body, CIAO_MD);
+}
+
+#[tokio::test]
+async fn html_fallback_has_vary_accept_and_link_when_markdown_exists() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, body) = get(&app, "/blog/ciao").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body, INDEX);
+    assert_eq!(h(&hd, "content-type"), "text/html; charset=utf-8");
+    assert!(vary_values(&hd).contains(&"accept".to_string()));
+    assert_eq!(
+        h(&hd, "link"),
+        r#"</blog/ciao.md>; rel="alternate"; type="text/markdown""#
+    );
+    let (_, hd, _) = get(&app, "/").await;
+    assert_eq!(
+        h(&hd, "link"),
+        r#"</index.md>; rel="alternate"; type="text/markdown""#
+    );
+    let (_, hd, body) = send_h(
+        &app,
+        Method::GET,
+        "/blog/ciao",
+        &[("accept", "text/html, text/markdown;q=0.5")],
+    )
+    .await;
+    assert_eq!(body, INDEX);
+    assert!(hd.get("link").is_some());
+}
+
+#[tokio::test]
+async fn path_without_markdown_gets_html_with_vary_and_no_link() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    for uri in ["/about", "/nope/whatever"] {
+        let (s, hd, body) = send_h(&app, Method::GET, uri, MD).await;
+        assert_eq!(s, StatusCode::OK, "{uri}");
+        assert!(body.contains("<html"), "{uri}");
+        assert_eq!(h(&hd, "content-type"), "text/html; charset=utf-8");
+        assert!(vary_values(&hd).contains(&"accept".to_string()), "{uri}");
+        assert!(hd.get("link").is_none(), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn head_negotiated_matches_get_without_body() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (gs, gh, gb) = send_h(&app, Method::GET, "/blog/ciao", MD).await;
+    let (hs, hh, hb) = send_h(&app, Method::HEAD, "/blog/ciao", MD).await;
+    assert_eq!(gs, hs);
+    assert!(hb.is_empty());
+    assert!(!gb.is_empty());
+    for name in ["content-type", "cache-control", "content-length"] {
+        assert_eq!(h(&gh, name), h(&hh, name), "{name}");
+    }
+    assert!(vary_values(&hh).contains(&"accept".to_string()));
+}
+
+#[tokio::test]
+async fn direct_md_request_uses_markdown_mime() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    let (s, hd, body) = get(&app, "/blog/ciao.md").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(h(&hd, "content-type"), "text/markdown; charset=utf-8");
+    assert_eq!(h(&hd, "cache-control"), "no-cache");
+    assert_eq!(body, CIAO_MD);
+}
+
+#[tokio::test]
+async fn traversal_with_markdown_accept_never_leaks() {
+    let env = Env::new();
+    let app = env.app(MANIFEST, None);
+    for uri in [
+        "/..%2fsecret",
+        "/%2e%2e/secret",
+        "/blog/%2e%2e/%2e%2e/secret",
+        "/../secret",
+        "/blog/..%2f..%2fsecret",
+    ] {
+        let Ok(parsed) = uri.parse::<axum::http::Uri>() else {
+            continue;
+        };
+        let req = Request::builder()
+            .uri(parsed)
+            .header("accept", "text/markdown")
+            .body(Body::empty())
+            .unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains(SECRET),
+            "{uri} leaked"
+        );
+    }
+}
+
+#[test]
+fn list_returns_relative_files() {
+    let env = Env::new();
+    let l = AssetSource::Disk(env.dist()).list();
+    for f in [
+        "index.html",
+        "index.md",
+        "assets/app.js",
+        "blog/ciao.md",
+        "robots.txt",
+    ] {
+        assert!(l.contains(&f.to_string()), "{f} in {l:?}");
+    }
+    assert!(!l.iter().any(|f| f.contains("secret")));
+    assert!(!l.contains(&"assets".to_string()), "no directories");
+}
+
+#[test]
+fn list_does_not_follow_symlinks_outside_root() {
+    let env = Env::new();
+    let outside = env.root.join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("leak.md"), SECRET).unwrap();
+    let dir_link = env.dist().join("linkdir");
+    let file_link = env.dist().join("linkfile.md");
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&outside, &dir_link).unwrap();
+        std::os::unix::fs::symlink(env.root.join("secret.md"), &file_link).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_dir(&outside, &dir_link).is_err()
+            || std::os::windows::fs::symlink_file(env.root.join("secret.md"), &file_link).is_err()
+        {
+            eprintln!("skipping: symlinks not permitted on this system");
+            return;
+        }
+    }
+    let l = AssetSource::Disk(env.dist()).list();
+    assert!(
+        !l.iter().any(|f| f.contains("leak") || f.contains("link")),
+        "{l:?}"
+    );
 }

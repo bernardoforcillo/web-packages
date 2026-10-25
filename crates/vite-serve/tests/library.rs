@@ -298,3 +298,31 @@ fn has_manifest_reflects_outcome() {
             .has_manifest()
     );
 }
+
+#[tokio::test]
+async fn build_on_dist_with_md_enables_negotiation() {
+    let d = dist();
+    std::fs::create_dir_all(d.path().join("blog")).unwrap();
+    std::fs::write(d.path().join("blog/ciao.md"), "# Ciao\n").unwrap();
+    let site = ViteServe::builder().dist(d.path()).build().unwrap();
+    let res = site
+        .router()
+        .oneshot(
+            Request::get("/blog/ciao")
+                .header("accept", "text/markdown")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()[header::CONTENT_TYPE],
+        "text/markdown; charset=utf-8"
+    );
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&bytes[..], b"# Ciao\n");
+    let (s, hd, _) = get_text(site.router(), "/other").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(hd.get(header::LINK).is_none());
+}

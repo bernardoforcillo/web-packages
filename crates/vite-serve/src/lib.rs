@@ -38,6 +38,8 @@ pub mod inject;
 mod library;
 pub mod manifest;
 #[doc(hidden)]
+pub mod negotiate;
+#[doc(hidden)]
 pub mod route_match;
 #[doc(hidden)]
 pub mod server;

@@ -11,6 +11,7 @@ use tokio::net::TcpListener;
 
 use crate::assets::AssetSource;
 use crate::manifest::{Manifest, ManifestError, SUPPORTED_VERSION};
+use crate::negotiate::MarkdownIndex;
 use crate::route_match::RouteTable;
 use crate::server::{AppState, build_app_shared};
 
@@ -169,6 +170,8 @@ impl ViteServeBuilder {
         };
         let has_manifest = manifest.is_some();
 
+        // Built once: Markdown files added to dist after startup are not seen.
+        let markdown = MarkdownIndex::from_paths(assets.list());
         let routes = RouteTable::new(&manifest.unwrap_or(Manifest {
             version: SUPPORTED_VERSION,
             routes: Vec::new(),
@@ -178,6 +181,7 @@ impl ViteServeBuilder {
             state: Arc::new(AppState {
                 assets,
                 routes,
+                markdown,
                 html_cache_control: self.html_cache_control,
             }),
         })

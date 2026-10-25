@@ -43,7 +43,7 @@ impl RouteTable {
 
 /// Drops query/fragment, percent-decodes, collapses `//` and strips a trailing slash.
 /// Returns `None` if the decoded path is not valid UTF-8.
-fn normalize_request_path(raw: &str) -> Option<String> {
+pub(crate) fn normalize_request_path(raw: &str) -> Option<String> {
     let end = raw.find(['?', '#']).unwrap_or(raw.len());
     let decoded = percent_decode_str(&raw[..end]).decode_utf8().ok()?;
     Some(join_segments(&decoded))

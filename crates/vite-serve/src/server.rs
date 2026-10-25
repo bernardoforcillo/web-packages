@@ -5,23 +5,34 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{Method, Request, StatusCode, header};
+use axum::http::{HeaderValue, Method, Request, StatusCode, header};
 use axum::response::Response;
 use axum::routing::get;
-use percent_encoding::percent_decode_str;
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use tower_http::compression::CompressionLayer;
 
 use crate::assets::AssetSource;
 use crate::inject::inject_head;
 use crate::manifest::CacheDirective;
-use crate::route_match::RouteTable;
+use crate::negotiate::{MarkdownIndex, prefers_markdown};
+use crate::route_match::{RouteTable, normalize_request_path};
 
 pub struct AppState {
     pub assets: AssetSource,
     pub routes: RouteTable,
+    /// Pages that have a Markdown twin (built once, from the files present at startup).
+    pub markdown: MarkdownIndex,
     /// When set, overrides the `Cache-Control` of served HTML.
     pub html_cache_control: Option<String>,
 }
+
+/// Everything but unreserved characters and `/` is escaped in the `Link` target.
+const LINK_PATH: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'/')
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
@@ -69,6 +80,37 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request<Body>) -> Respo
         }
     }
 
+    let accept = req
+        .headers()
+        .get_all(header::ACCEPT)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect::<Vec<_>>()
+        .join(",");
+    let markdown_file = state.markdown.file_for(&path).map(str::to_owned);
+    if let Some(file) = &markdown_file
+        && prefers_markdown(&accept)
+    {
+        let st = state.clone();
+        let file = file.clone();
+        let asset = tokio::task::spawn_blocking(move || st.assets.get(&file))
+            .await
+            .ok()
+            .flatten();
+        if let Some(asset) = asset {
+            let mut res = respond(
+                StatusCode::OK,
+                "text/markdown; charset=utf-8",
+                "no-cache",
+                asset.bytes,
+                is_head,
+            );
+            res.headers_mut()
+                .append(header::VARY, HeaderValue::from_static("Accept"));
+            return res;
+        }
+    }
+
     let st = state.clone();
     let index = tokio::task::spawn_blocking(move || st.assets.get("index.html"))
         .await
@@ -101,13 +143,36 @@ async fn handle(State(state): State<Arc<AppState>>, req: Request<Body>) -> Respo
     if let Some(over) = &state.html_cache_control {
         cache = over.clone();
     }
-    respond(
+    let mut res = respond(
         StatusCode::OK,
         "text/html; charset=utf-8",
         &cache,
         html.into_bytes(),
         is_head,
-    )
+    );
+    res.headers_mut()
+        .append(header::VARY, HeaderValue::from_static("Accept"));
+    if markdown_file.is_some()
+        && let Some(link) = alternate_link(&path)
+    {
+        res.headers_mut().append(header::LINK, link);
+    }
+    res
+}
+
+/// `Link: <{path}.md>; rel="alternate"; type="text/markdown"` for a normalised path.
+fn alternate_link(path: &str) -> Option<HeaderValue> {
+    let normalized = normalize_request_path(path)?;
+    let target = if normalized == "/" {
+        "/index".to_string()
+    } else {
+        normalized
+    };
+    let encoded = utf8_percent_encode(&target, LINK_PATH);
+    HeaderValue::from_str(&format!(
+        "<{encoded}.md>; rel=\"alternate\"; type=\"text/markdown\""
+    ))
+    .ok()
 }
 
 fn has_extension(rel: &str) -> bool {

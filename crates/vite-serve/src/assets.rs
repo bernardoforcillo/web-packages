@@ -45,6 +45,49 @@ impl AssetSource {
     }
 }
 
+impl AssetSource {
+    /// Relative paths (`/` separated) of every regular file in the source. On disk the
+    /// walk never follows symlinks, so nothing outside the root can appear. Embedded
+    /// sources list the compiled-in files.
+    pub fn list(&self) -> Vec<String> {
+        match self {
+            AssetSource::Disk(root) => list_disk(root),
+            #[cfg(feature = "embed")]
+            AssetSource::Embedded => Dist::iter().map(|p| p.into_owned()).collect(),
+        }
+    }
+}
+
+fn list_disk(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root.to_path_buf(), String::new())];
+    while let Some((dir, prefix)) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(ty) = entry.file_type() else {
+                continue;
+            };
+            // `DirEntry::file_type` does not follow symlinks.
+            if ty.is_symlink() {
+                continue;
+            }
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let rel = format!("{prefix}{name}");
+            if ty.is_dir() {
+                stack.push((entry.path(), format!("{rel}/")));
+            } else if ty.is_file() {
+                out.push(rel);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// Percent-decodes and validates a relative path, returning it `/`-joined.
 fn sanitize(rel: &str) -> Option<String> {
     if rel.starts_with('/') {
@@ -86,6 +129,8 @@ fn mime_for(rel: &str) -> String {
     let mime = mime_guess::from_path(rel).first_or_octet_stream();
     if mime.essence_str() == "text/html" {
         "text/html; charset=utf-8".to_string()
+    } else if rel.ends_with(".md") {
+        "text/markdown; charset=utf-8".to_string()
     } else {
         mime.to_string()
     }
