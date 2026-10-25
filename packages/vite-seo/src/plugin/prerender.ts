@@ -1,8 +1,8 @@
 /**
- * Prerender delle route statiche TanStack Router e conversione HTML -> markdown.
+ * Prerender of static TanStack Router routes and HTML -> markdown conversion.
  *
- * Questo modulo importa `turndown`, `linkedom` e (dinamicamente) `react` /
- * `react-dom/server`: e' raggiunto SOLO dall'entry `./vite`, mai da `src/index.ts`.
+ * This module imports `turndown`, `linkedom` and (dynamically) `react` /
+ * `react-dom/server`: it is reached ONLY from the `./vite` entry, never from `src/index.ts`.
  */
 import { parseHTML } from "linkedom";
 import TurndownService from "turndown";
@@ -10,16 +10,16 @@ import type { ContentEntry } from "../types";
 import { enumerateRoutes } from "./routes";
 
 /**
- * Opzioni del prerender delle route statiche.
+ * Options for prerendering static routes.
  */
 export type PrerenderOptions = {
   /**
-   * Modulo (risolto da `load`) che esporta `createRouter()` e restituisce il router dell'app,
-   * per avere contesto/provider reali. DEVE usare la memory history (il router viene spostato
-   * con `router.history.replace(path)` in Node: una browser history non funziona).
+   * Module (resolved by `load`) that exports `createRouter()` and returns the app's router,
+   * so that real context/providers are available. It MUST use the memory history (the router is moved
+   * with `router.history.replace(path)` in Node: a browser history does not work).
    */
   createRouter?: string;
-  /** Se true, la prima route che fallisce fa rigettare la promise invece di produrre un avviso. */
+  /** If true, the first route that fails rejects the promise instead of producing a warning. */
   strict?: boolean;
 };
 
@@ -85,8 +85,8 @@ function createService(): TurndownService {
     codeBlockStyle: "fenced",
     bulletListMarker: "-",
   });
-  // Tabelle GFM scritte a mano (turndown-plugin-gfm e' ferma dal 2019 e aggiunge
-  // anche strikethrough/task list che qui non servono): la prima riga fa da intestazione.
+  // Hand-written GFM tables (turndown-plugin-gfm has been unmaintained since 2019 and also adds
+  // strikethrough/task lists that are not needed here): the first row acts as the header.
   service.addRule("gfmTable", {
     filter: "table",
     replacement: (_content, node) => {
@@ -102,7 +102,7 @@ function createService(): TurndownService {
       return `\n\n${[line(head!), line(Array.from({ length: width }, () => "---")), ...body.map(line)].join("\n")}\n\n`;
     },
   });
-  // Le celle sono gia' gestite dalla regola della tabella.
+  // The cells are already handled by the table rule.
   service.addRule("tableParts", {
     filter: ["thead", "tbody", "tfoot", "tr", "th", "td", "caption"],
     replacement: (content) => content,
@@ -126,7 +126,7 @@ export function htmlToMarkdown(
     document.documentElement;
   if (!container) return { markdown: "" };
 
-  // Il container stesso non deve sparire (es. un <main> dentro <header>): si scartano solo i discendenti.
+  // The container itself must not disappear (e.g. a <main> inside <header>): only the descendants are discarded.
   for (const el of Array.from(container.querySelectorAll(DROPPED))) el.remove();
 
   let title: string | undefined;
@@ -200,15 +200,15 @@ export async function prerenderRoutes(
   const seen = new Set<string>();
   for (const route of await enumerateRoutes(routeTree)) {
     if (route.dynamic) continue;
-    // fullPath di una index annidata o di un path esplicito e' "/docs/": si apre "/docs".
+    // the fullPath of a nested index or of an explicit path is "/docs/": it opens as "/docs".
     const path = normalizePath(route.path);
-    if (seen.has(path)) continue; // layout "/docs" + index "/docs/" rendono la stessa pagina
+    if (seen.has(path)) continue; // layout "/docs" + index "/docs/" render the same page
     seen.add(path);
     try {
       let router: RouterLike;
       if (customFactory) {
         router = await customFactory();
-        // Il router non e' montato: si sposta la history e `load()` rilegge la location.
+        // The router is not mounted: the history is moved and `load()` re-reads the location.
         router.history.replace(path);
       } else {
         router = createRouter({
@@ -232,8 +232,8 @@ export async function prerenderRoutes(
       }
 
       const html = renderToString(createElement(RouterProvider, { router }));
-      // React non lancia: su errore di render emette un marcatore `<!--$!-->` + <template data-msg>
-      // e lascia il resto del documento. Una pagina cosi' sarebbe incompleta: va trattata come errore.
+      // React does not throw: on a render error it emits a `<!--$!-->` marker + <template data-msg>
+      // and leaves the rest of the document. Such a page would be incomplete: it must be treated as an error.
       if (html.includes("<!--$!-->")) {
         const detail = /data-msg="([^"]*)"/.exec(html)?.[1]?.replace(/&quot;/g, '"').replace(/&amp;/g, "&").trim();
         throw new Error(detail ? `render error (${detail.split(/\r?\n/).pop()})` : "render error");

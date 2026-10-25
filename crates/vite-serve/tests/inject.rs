@@ -12,7 +12,7 @@ const VITE: &str = r#"<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- keep me -->
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <title>Vecchio</title>
+    <title>Old</title>
     <script type="module" crossorigin src="/assets/index-abc123.js"></script>
   </head>
   <body>
@@ -29,10 +29,10 @@ fn count(hay: &str, needle: &str) -> usize {
 
 #[test]
 fn replaces_title() {
-    let h = head(r#"{"meta":[{"title":"Nuovo"}]}"#);
+    let h = head(r#"{"meta":[{"title":"New"}]}"#);
     let out = inject_head(VITE, &h).unwrap();
-    assert!(!out.contains("Vecchio"));
-    assert!(out.contains("<title>Nuovo</title>"));
+    assert!(!out.contains("Old"));
+    assert!(out.contains("<title>New</title>"));
     // head-level title replaced; svg title untouched
     assert_eq!(count(&out, "<title>"), 2);
     assert!(out.contains("<svg><title>icon</title></svg>"));
@@ -41,10 +41,10 @@ fn replaces_title() {
 #[test]
 fn svg_title_is_kept_when_head_has_no_title_in_doc() {
     let html = "<html><head></head><body><svg><title>icon</title></svg></body></html>";
-    let h = head(r#"{"meta":[{"title":"Nuovo"}]}"#);
+    let h = head(r#"{"meta":[{"title":"New"}]}"#);
     let out = inject_head(html, &h).unwrap();
     assert!(out.contains("<svg><title>icon</title></svg>"));
-    assert!(out.contains("<title>Nuovo</title>"));
+    assert!(out.contains("<title>New</title>"));
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn canonical_kept_if_head_does_not_inject_one() {
 #[test]
 fn untouched_content_is_byte_identical() {
     let h = head(
-        r#"{"meta":[{"title":"Nuovo"},{"name":"description","content":"d"}],"links":[{"rel":"canonical","href":"https://x.test/"}]}"#,
+        r#"{"meta":[{"title":"New"},{"name":"description","content":"d"}],"links":[{"rel":"canonical","href":"https://x.test/"}]}"#,
     );
     let out = inject_head(VITE, &h).unwrap();
     for keep in [
@@ -130,7 +130,7 @@ fn injected_content_goes_at_end_of_head() {
 #[test]
 fn no_head_is_unchanged() {
     let html = "<div>hello</div>";
-    let h = head(r#"{"meta":[{"title":"Nuovo"}]}"#);
+    let h = head(r#"{"meta":[{"title":"New"}]}"#);
     assert_eq!(inject_head(html, &h).unwrap(), html);
 }
 

@@ -1,16 +1,16 @@
 /**
- * Enumerazione delle route TanStack Router per il manifest `seo-routes.json`.
+ * Enumeration of TanStack Router routes for the `seo-routes.json` manifest.
  *
- * Verifica empirica dell'API (@tanstack/react-router 1.170.x), con
+ * Empirical check of the API (@tanstack/react-router 1.170.x), with
  * `createRouter({ routeTree, history: createMemoryHistory() })`:
- *  - `router.routesByPath` e' una mappa `fullPath -> route` con tutte le route
- *    che hanno un path (indice incluso come "/", dinamiche come "/posts/$postId");
- *    la root NON compare: sta solo in `router.routesById["__root__"]`.
- *  - Campo scelto per il path: `route.fullPath`.
+ *  - `router.routesByPath` is a `fullPath -> route` map with all the routes
+ *    that have a path (index included as "/", dynamic ones like "/posts/$postId");
+ *    the root does NOT appear: it is only in `router.routesById["__root__"]`.
+ *  - Field chosen for the path: `route.fullPath`.
  *  - `route.options.head`, `route.options.loader`, `route.options.beforeLoad`
- *    sono le funzioni passate a createRoute (undefined se assenti).
- *  - `route.parentRoute` risale la catena fino alla root (inclusa), da cui
- *    si ricava la catena antenato -> foglia.
+ *    are the functions passed to createRoute (undefined if absent).
+ *  - `route.parentRoute` walks up the chain to the root (included), from which
+ *    the ancestor -> leaf chain is derived.
  */
 import type { Head } from "../types";
 
@@ -27,7 +27,7 @@ function metaKey(m: MetaEntry): string {
   return `raw:${JSON.stringify(m)}`;
 }
 
-/** Mantiene solo l'ultima occorrenza di ogni chiave, nell'ordine di quelle ultime. */
+/** Keeps only the last occurrence of each key, in the order of those last occurrences. */
 function keepLast<T>(items: T[], key: (item: T) => string): T[] {
   const seen = new Set<string>();
   const out: T[] = [];
@@ -40,7 +40,7 @@ function keepLast<T>(items: T[], key: (item: T) => string): T[] {
   return out.reverse();
 }
 
-/** Unisce gli head dall'antenato (primo) alla foglia (ultimo). */
+/** Merges the heads from the ancestor (first) to the leaf (last). */
 export function mergeHeads(heads: Head[]): Head {
   const result: Head = {
     meta: keepLast(heads.flatMap((x) => x.meta), metaKey),
@@ -63,13 +63,13 @@ type AnyRoute = {
 
 export type EnumeratedRoute = {
   path: string;
-  /** Segue le regole di staticita': `$` nel path, loader/beforeLoad nella catena, o head che lancia. */
+  /** Follows the staticity rules: `$` in the path, loader/beforeLoad in the chain, or a head that throws. */
   dynamic: boolean;
-  /** Head unito della catena (solo per route statiche). */
+  /** Merged head of the chain (static routes only). */
   head?: Head;
 };
 
-/** Enumera tutte le route con path e ne decide la staticita' (regola unica per manifest e prerender). */
+/** Enumerates all routes with a path and decides whether each is static (a single rule for manifest and prerender). */
 export async function enumerateRoutes(routeTree: unknown): Promise<EnumeratedRoute[]> {
   const { createRouter, createMemoryHistory } = await import("@tanstack/react-router");
   const router = createRouter({

@@ -22,18 +22,18 @@ describe("loadContent", () => {
   it("parses a full frontmatter", async () => {
     write(
       "content/blog/ciao.md",
-      "---\ntitle: Ciao\ndescription: Desc\ndate: 2026-03-04T10:00:00Z\nupdated: 2026-03-05T10:00:00Z\ntags: [a, b]\n---\nCorpo qui\n",
+      "---\ntitle: Hello\ndescription: Desc\ndate: 2026-03-04T10:00:00Z\nupdated: 2026-03-05T10:00:00Z\ntags: [a, b]\n---\nBody here\n",
     );
     const [e] = await loadContent({ dir: "content" }, root);
     expect(e).toMatchObject({
       slug: "blog/ciao",
       url: "/blog/ciao",
-      title: "Ciao",
+      title: "Hello",
       description: "Desc",
       date: "2026-03-04T10:00:00.000Z",
       updated: "2026-03-05T10:00:00.000Z",
       tags: ["a", "b"],
-      body: "Corpo qui\n",
+      body: "Body here\n",
     });
     expect(e.file).toBe(join(root, "content", "blog", "ciao.md"));
   });
@@ -41,13 +41,13 @@ describe("loadContent", () => {
   it("derives URLs from paths", async () => {
     write("c/index.md", "# Home");
     write("c/blog/index.md", "# Blog");
-    write("c/blog/ciao.md", "# Ciao");
+    write("c/blog/ciao.md", "# Hello");
     const urls = (await loadContent({ dir: "c" }, root)).map((e) => e.url).sort();
     expect(urls).toEqual(["/", "/blog", "/blog/ciao"]);
   });
 
   it("applies baseUrl", async () => {
-    write("c/blog/ciao.md", "# Ciao");
+    write("c/blog/ciao.md", "# Hello");
     write("c/index.md", "# Home");
     const urls = (await loadContent({ dir: "c", baseUrl: "/docs" }, root)).map((e) => e.url).sort();
     expect(urls).toEqual(["/docs", "/docs/blog/ciao"]);
@@ -60,10 +60,10 @@ describe("loadContent", () => {
   });
 
   it("derives title from H1 then file name", async () => {
-    write("c/a.md", "intro\n\n# Dal titolo\n");
-    write("c/my-file.md", "niente titolo");
+    write("c/a.md", "intro\n\n# From title\n");
+    write("c/my-file.md", "no title");
     const m = Object.fromEntries((await loadContent({ dir: "c" }, root)).map((e) => [e.slug, e.title]));
-    expect(m).toEqual({ a: "Dal titolo", "my-file": "my-file" });
+    expect(m).toEqual({ a: "From title", "my-file": "my-file" });
   });
 
   it("excludes drafts", async () => {
@@ -73,10 +73,10 @@ describe("loadContent", () => {
   });
 
   it("handles BOM and CRLF", async () => {
-    write("c/a.md", "﻿---\r\ntitle: T\r\n---\r\nCorpo\r\n");
+    write("c/a.md", "﻿---\r\ntitle: T\r\n---\r\nBody\r\n");
     const [e] = await loadContent({ dir: "c" }, root);
     expect(e.title).toBe("T");
-    expect(e.body).toBe("Corpo\r\n");
+    expect(e.body).toBe("Body\r\n");
   });
 
   it("uses whole text when no frontmatter", async () => {
@@ -99,9 +99,9 @@ describe("loadContent", () => {
   });
 
   it("wraps a single tag string", async () => {
-    write("c/a.md", "---\ntags: solo\n---\nx");
+    write("c/a.md", "---\ntags: single\n---\nx");
     const [e] = await loadContent({ dir: "c" }, root);
-    expect(e.tags).toEqual(["solo"]);
+    expect(e.tags).toEqual(["single"]);
   });
 
   it("errors on duplicate URLs naming both files", async () => {

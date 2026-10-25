@@ -16,26 +16,26 @@ const entry = (over: Partial<ContentEntry> = {}): ContentEntry => ({
 describe("llmsToTxt", () => {
   it("renders the full case exactly", () => {
     const llms: MetadataRoute.Llms = {
-      title: "Titolo",
-      summary: "Riassunto",
-      details: "Dettagli",
+      title: "Title",
+      summary: "Summary",
+      details: "Details",
       sections: [
         {
           title: "Docs",
           links: [
             { title: "Intro", url: "https://x.it/intro", notes: "Note" },
-            { title: "Guida", url: "https://x.it/guida" },
+            { title: "Guide", url: "https://x.it/guida" },
           ],
         },
         {
           title: "Extra",
           optional: true,
-          links: [{ title: "Altro", url: "https://x.it/altro" }],
+          links: [{ title: "Other", url: "https://x.it/altro" }],
         },
       ],
     };
     expect(llmsToTxt(llms)).toBe(
-      "# Titolo\n\n> Riassunto\n\nDettagli\n\n## Docs\n\n- [Intro](https://x.it/intro): Note\n- [Guida](https://x.it/guida)\n\n## Optional\n\n- [Altro](https://x.it/altro)\n",
+      "# Title\n\n> Summary\n\nDetails\n\n## Docs\n\n- [Intro](https://x.it/intro): Note\n- [Guide](https://x.it/guida)\n\n## Optional\n\n- [Other](https://x.it/altro)\n",
     );
   });
 
@@ -101,13 +101,13 @@ describe("llmsFullToTxt", () => {
   it("concatenates entries in order separated by a rule", () => {
     const out = llmsFullToTxt(
       [
-        entry({ title: "Uno", url: "/u", body: "Body uno\n" }),
-        entry({ title: "Due", url: "/d", body: "Body due\n" }),
+        entry({ title: "One", url: "/u", body: "Body one\n" }),
+        entry({ title: "Two", url: "/d", body: "Body two\n" }),
       ],
       "https://x.it",
     );
     expect(out).toBe(
-      "# Uno\nhttps://x.it/u\n\nBody uno\n\n---\n\n# Due\nhttps://x.it/d\n\nBody due\n",
+      "# One\nhttps://x.it/u\n\nBody one\n\n---\n\n# Two\nhttps://x.it/d\n\nBody two\n",
     );
   });
 
@@ -120,12 +120,12 @@ describe("markdownForEntry", () => {
   it("round-trips a tricky title and keeps the body byte for byte", () => {
     const body = "# H\n\n![i](./img.png) [l](../x)\n  trailing  \n";
     const md = markdownForEntry(
-      entry({ title: 'Guida: "avanzata" # 2', url: "/blog/a", body }),
+      entry({ title: 'Guide: "advanced" # 2', url: "/blog/a", body }),
     );
     const m = /^---\n([\s\S]*?)\n---\n\n([\s\S]*)$/.exec(md);
     expect(m).not.toBeNull();
     const fm = parse(m![1]);
-    expect(fm.title).toBe('Guida: "avanzata" # 2');
+    expect(fm.title).toBe('Guide: "advanced" # 2');
     expect(fm.url).toBe("/blog/a");
     expect("description" in fm).toBe(false);
     expect("date" in fm).toBe(false);

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_vite-serve");
 const FIXTURE: &[u8] = include_bytes!("fixtures/seo-routes.json");
-const INDEX: &str = "<!doctype html><html><head><title>Vecchio</title></head><body></body></html>";
+const INDEX: &str = "<!doctype html><html><head><title>Old</title></head><body></body></html>";
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -101,5 +101,5 @@ fn end_to_end_injects_title() {
     std::fs::write(d.path().join("seo-routes.json"), FIXTURE).unwrap();
     let s = start(&["--dist", d.path().to_str().unwrap()]);
     let body = get(&format!("{}/about", s.base));
-    assert!(body.contains("<title>About | Sito</title>"), "{body}");
+    assert!(body.contains("<title>About | Site</title>"), "{body}");
 }

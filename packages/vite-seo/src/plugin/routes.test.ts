@@ -63,7 +63,7 @@ describe("buildSeoRoutes: chain semantics", () => {
     const routes = await only(routeTree);
     const plain = routes.find((x) => x.path === "/plain")!;
     expect(plain.dynamic).toBe(false);
-    expect(plain.head?.meta).toEqual([{ title: "Sito" }]);
+    expect(plain.head?.meta).toEqual([{ title: "Site" }]);
   });
   it("omits static routes when no head exists anywhere in the chain", async () => {
     expect(await only(noHeadTree)).toEqual([]);

@@ -9,7 +9,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 use vite_serve::{BuildError, Manifest, ViteServe, ViteServeBuilder};
 
-const INDEX: &str = "<!doctype html><html><head><title>Vecchio</title></head><body><div id=\"root\"></div></body></html>";
+const INDEX: &str = "<!doctype html><html><head><title>Old</title></head><body><div id=\"root\"></div></body></html>";
 const FIXTURE: &[u8] = include_bytes!("fixtures/seo-routes.json");
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -73,7 +73,7 @@ async fn manifest_path_injects_title() {
         .unwrap();
     let (st, _, body) = get_text(vs.router(), "/about").await;
     assert_eq!(st, StatusCode::OK);
-    assert!(body.contains("<title>About | Sito</title>"), "{body}");
+    assert!(body.contains("<title>About | Site</title>"), "{body}");
 }
 
 #[tokio::test]
@@ -88,7 +88,7 @@ async fn manifest_value_and_repeated_router_calls() {
     let vs2 = vs.clone();
     let (_, _, a) = get_text(vs.router(), "/about").await;
     let (_, _, b) = get_text(vs2.router(), "/about").await;
-    assert!(a.contains("<title>About | Sito</title>"));
+    assert!(a.contains("<title>About | Site</title>"));
     assert_eq!(a, b);
 }
 
@@ -116,7 +116,7 @@ async fn default_manifest_in_dist_is_picked_up_and_absent_is_fine() {
     std::fs::write(d.path().join("seo-routes.json"), FIXTURE).unwrap();
     let vs = ViteServe::builder().dist(d.path()).build().unwrap();
     let (_, _, body) = get_text(vs.router(), "/about").await;
-    assert!(body.contains("<title>About | Sito</title>"));
+    assert!(body.contains("<title>About | Site</title>"));
 }
 
 #[tokio::test]
@@ -135,7 +135,7 @@ async fn mounts_inside_another_axum_app() {
     assert_eq!((st, body.as_str()), (StatusCode::OK, "pong"));
     let (st, _, body) = get_text(app, "/about").await;
     assert_eq!(st, StatusCode::OK);
-    assert!(body.contains("<title>About | Sito</title>"));
+    assert!(body.contains("<title>About | Site</title>"));
 }
 
 #[tokio::test]
@@ -270,7 +270,7 @@ async fn embedded_bundle_reads_its_own_manifest() {
     let vs = ViteServe::builder().embedded().build().unwrap();
     assert!(vs.has_manifest());
     let (_, _, body) = get_text(vs.router(), "/about").await;
-    assert!(body.contains("<title>About | Sito</title>"), "{body}");
+    assert!(body.contains("<title>About | Site</title>"), "{body}");
     let vs = ViteServe::builder()
         .embedded()
         .no_manifest()
@@ -303,7 +303,7 @@ fn has_manifest_reflects_outcome() {
 async fn build_on_dist_with_md_enables_negotiation() {
     let d = dist();
     std::fs::create_dir_all(d.path().join("blog")).unwrap();
-    std::fs::write(d.path().join("blog/ciao.md"), "# Ciao\n").unwrap();
+    std::fs::write(d.path().join("blog/ciao.md"), "# Hello\n").unwrap();
     let site = ViteServe::builder().dist(d.path()).build().unwrap();
     let res = site
         .router()
@@ -321,7 +321,7 @@ async fn build_on_dist_with_md_enables_negotiation() {
         "text/markdown; charset=utf-8"
     );
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
-    assert_eq!(&bytes[..], b"# Ciao\n");
+    assert_eq!(&bytes[..], b"# Hello\n");
     let (s, hd, _) = get_text(site.router(), "/other").await;
     assert_eq!(s, StatusCode::OK);
     assert!(hd.get(header::LINK).is_none());

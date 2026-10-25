@@ -16,7 +16,7 @@ const INDEX: &str = r#"<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Vecchio</title>
+    <title>Old</title>
     <script type="module" crossorigin src="/assets/app.js"></script>
   </head>
   <body><div id="root"></div></body>
@@ -24,9 +24,9 @@ const INDEX: &str = r#"<!doctype html>
 "#;
 
 // Longer than the compression layer's minimum size so gzip actually applies.
-const CIAO_MD: &str = "# Ciao
+const CIAO_MD: &str = "# Hello
 
-Questo e il testo markdown della pagina di prova, abbastanza lungo.
+This is the markdown text of the test page, long enough.
 ";
 
 const SECRET: &str = "TOP-SECRET-CONTENT-12345";
@@ -81,9 +81,9 @@ impl Drop for Env {
 const MANIFEST: &str = r#"{
   "version": 1,
   "routes": [
-    { "path": "/", "dynamic": false, "head": { "meta": [{ "title": "Home | Sito" }] } },
-    { "path": "/about", "dynamic": false, "head": { "meta": [{ "title": "About | Sito" }], "cache": { "revalidate": 60 } } },
-    { "path": "/off", "dynamic": false, "head": { "meta": [{ "title": "Off | Sito" }], "cache": false } },
+    { "path": "/", "dynamic": false, "head": { "meta": [{ "title": "Home | Site" }] } },
+    { "path": "/about", "dynamic": false, "head": { "meta": [{ "title": "About | Site" }], "cache": { "revalidate": 60 } } },
+    { "path": "/off", "dynamic": false, "head": { "meta": [{ "title": "Off | Site" }], "cache": false } },
     { "path": "/posts/$postId", "dynamic": true }
   ]
 }"#;
@@ -128,13 +128,13 @@ async fn injects_head_for_static_routes() {
     let app = env.app(MANIFEST, None);
     let (s, hd, body) = get(&app, "/about").await;
     assert_eq!(s, StatusCode::OK);
-    assert!(body.contains("<title>About | Sito</title>"), "{body}");
-    assert!(!body.contains("Vecchio"));
+    assert!(body.contains("<title>About | Site</title>"), "{body}");
+    assert!(!body.contains("Old"));
     assert!(body.contains(r#"src="/assets/app.js""#));
     assert_eq!(h(&hd, "content-type"), "text/html; charset=utf-8");
     let (s, _, body) = get(&app, "/").await;
     assert_eq!(s, StatusCode::OK);
-    assert!(body.contains("<title>Home | Sito</title>"));
+    assert!(body.contains("<title>Home | Site</title>"));
     assert!(body.contains(r#"src="/assets/app.js""#));
 }
 

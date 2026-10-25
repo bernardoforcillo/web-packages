@@ -1,9 +1,9 @@
 ---
-title: "Ciao: mondo & co"
-description: Un saluto <b>speciale</b>
+title: "Hello: world & co"
+description: A <b>special</b> greeting
 date: 2026-03-04T10:00:00Z
-tags: [saluti, intro]
+tags: [greetings, intro]
 ---
-# Ciao
+# Hello
 
-Corpo del post con ]]> e & dentro.
+Post body with ]]> and & inside.

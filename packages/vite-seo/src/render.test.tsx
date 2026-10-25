@@ -5,11 +5,11 @@ import { defineSeo } from "./seo";
 
 const site = defineSeo({
   metadataBase: "https://x.it",
-  title: { default: "Sito", template: "%s | Sito" },
-  description: "Desc sito",
-  openGraph: { siteName: "Sito", images: [{ url: "/og.png" }] },
-  twitter: { card: "summary_large_image", site: "@sito" },
-  jsonLd: { "@type": "WebSite", "@id": "https://x.it/#website", name: "Sito" },
+  title: { default: "Site", template: "%s | Site" },
+  description: "Site desc",
+  openGraph: { siteName: "Site", images: [{ url: "/og.png" }] },
+  twitter: { card: "summary_large_image", site: "@site" },
+  jsonLd: { "@type": "WebSite", "@id": "https://x.it/#website", name: "Site" },
   alternates: { canonical: "/", languages: { en: "/en" } },
 });
 
@@ -42,9 +42,9 @@ describe("rendered head through TanStack Router", () => {
     const html = await render();
     expect(html.match(/<link rel="canonical"/g)).toHaveLength(1);
     expect(html).toContain('href="https://x.it/about"');
-    expect(html).toContain('<meta property="og:title" content="About | Sito"');
-    expect(html).toContain("<title>About | Sito</title>");
-    expect(html).not.toContain("About | Sito | Sito");
+    expect(html).toContain('<meta property="og:title" content="About | Site"');
+    expect(html).toContain("<title>About | Site</title>");
+    expect(html).not.toContain("About | Site | Site");
     expect(html.match(/application\/ld\+json/g)).toHaveLength(1);
     expect(html).toContain('"@graph"');
     expect(html).toContain('"@type":"WebSite"');

@@ -3,7 +3,7 @@ import { defineSeo } from "../../src/seo";
 
 export const site = defineSeo({
   metadataBase: "https://x.it",
-  title: { default: "Sito", template: "%s | Sito" },
+  title: { default: "Site", template: "%s | Site" },
 });
 
 function build(withExtras: boolean) {
@@ -46,10 +46,10 @@ const plain = createRoute({ getParentRoute: () => root, path: "/plain" });
 return root.addChildren(withExtras ? [index, about, post, stats, plain] : [index, about, post]);
 }
 
-/** Esattamente le route di crates/vite-serve/tests/fixtures/seo-routes.json. */
+/** Exactly the routes of crates/vite-serve/tests/fixtures/seo-routes.json. */
 export const sharedTree = build(false);
 
-/** Albero completo, con /stats (beforeLoad) e /plain (senza head). */
+/** Full tree, with /stats (beforeLoad) and /plain (no head). */
 export const routeTree = build(true);
 
 const throwingRoot = createRootRoute();

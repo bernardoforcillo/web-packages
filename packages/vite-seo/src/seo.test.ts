@@ -62,7 +62,7 @@ describe("json-ld graph", () => {
         { "@type": "Article", "@id": "https://x.it/a#a", isPartOf: { "@id": "https://x.it/#site" }, headline: "H" },
       ],
     });
-    // il root head non emette JSON-LD: lo fa seo(), altrimenti il grafo sarebbe duplicato
+    // the root head does not emit JSON-LD: seo() does, otherwise the graph would be duplicated
     expect(rootHead().scripts).toEqual([]);
   });
 });

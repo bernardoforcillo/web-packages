@@ -8,7 +8,7 @@ fn parses_shared_fixture() {
     assert_eq!(m.version, 1);
     assert_eq!(m.routes.len(), 3);
     let head = m.routes[0].head.as_ref().unwrap();
-    assert_eq!(head.meta[0]["title"], "Home | Sito");
+    assert_eq!(head.meta[0]["title"], "Home | Site");
     assert_eq!(head.cache, None);
     let about = m.routes[1].head.as_ref().unwrap();
     assert_eq!(about.cache, Some(CacheDirective::Revalidate(60)));

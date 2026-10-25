@@ -17,41 +17,41 @@ describe("mergeMetadata", () => {
 
   it("merges openGraph and twitter field by field", () => {
     const merged = mergeMetadata(
-      { openGraph: { siteName: "Sito", title: "Base" }, twitter: { site: "@s", title: "B" } },
+      { openGraph: { siteName: "Site", title: "Base" }, twitter: { site: "@s", title: "B" } },
       { openGraph: { title: "Page" }, twitter: { title: "P" } },
     );
-    expect(merged.openGraph).toEqual({ siteName: "Sito", title: "Page" });
+    expect(merged.openGraph).toEqual({ siteName: "Site", title: "Page" });
     expect(merged.twitter).toEqual({ site: "@s", title: "P" });
   });
 
   it("applies the base template to the page title", () => {
-    const merged = mergeMetadata({ title: { default: "Sito", template: "%s | Sito" } }, { title: "Home" });
-    expect(resolveTitle(merged.title)).toBe("Home | Sito");
+    const merged = mergeMetadata({ title: { default: "Site", template: "%s | Site" } }, { title: "Home" });
+    expect(resolveTitle(merged.title)).toBe("Home | Site");
   });
 
   it("ignores the template for absolute titles", () => {
     const merged = mergeMetadata(
-      { title: { default: "Sito", template: "%s | Sito" } },
+      { title: { default: "Site", template: "%s | Site" } },
       { title: { absolute: "Home" } },
     );
     expect(resolveTitle(merged.title)).toBe("Home");
   });
 
   it("falls back to the default when the page title is empty", () => {
-    const merged = mergeMetadata({ title: { default: "Sito", template: "%s | Sito" } }, { title: "" });
-    expect(resolveTitle(merged.title)).toBe("Sito");
+    const merged = mergeMetadata({ title: { default: "Site", template: "%s | Site" } }, { title: "" });
+    expect(resolveTitle(merged.title)).toBe("Site");
   });
 
   it("preserves the template for later levels", () => {
-    const l1 = mergeMetadata({ title: { default: "Sito", template: "%s | Sito" } }, { title: "A" });
+    const l1 = mergeMetadata({ title: { default: "Site", template: "%s | Site" } }, { title: "A" });
     const l2 = mergeMetadata(l1, { title: "B" });
-    expect(resolveTitle(l2.title)).toBe("B | Sito");
+    expect(resolveTitle(l2.title)).toBe("B | Site");
   });
 });
 
 describe("resolveTitle", () => {
   it("returns default", () => {
-    expect(resolveTitle({ default: "Sito", template: "%s | Sito" })).toBe("Sito");
+    expect(resolveTitle({ default: "Site", template: "%s | Site" })).toBe("Site");
   });
   it("returns undefined for no title", () => {
     expect(resolveTitle(undefined)).toBeUndefined();
@@ -61,12 +61,12 @@ describe("resolveTitle", () => {
 describe("fix wave", () => {
   it("R1: does not interpret $ sequences in the page title", () => {
     const t = "Win $$$ and $& and $`";
-    const m = mergeMetadata({ title: { default: "Sito", template: "%s | Sito" } }, { title: t });
-    expect(resolveTitle(m.title)).toBe(`${t} | Sito`);
+    const m = mergeMetadata({ title: { default: "Site", template: "%s | Site" } }, { title: t });
+    expect(resolveTitle(m.title)).toBe(`${t} | Site`);
   });
   it("R2: page title/description override inherited og/twitter ones; og.url never inherited", () => {
     const site = {
-      openGraph: { title: "Sito OG", description: "D", url: "https://x.it/", siteName: "S" },
+      openGraph: { title: "Site OG", description: "D", url: "https://x.it/", siteName: "S" },
       twitter: { title: "T", description: "TD", site: "@s" },
     };
     const m = mergeMetadata(site, { title: "About", description: "Desc" });

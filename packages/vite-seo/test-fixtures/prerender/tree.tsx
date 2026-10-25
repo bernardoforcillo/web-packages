@@ -98,6 +98,6 @@ const ctx = createRoute({ getParentRoute: () => root, path: "/ctx", component: C
 return root.addChildren(withBoom ? [index, docs, boom, withLoader, param, ctx] : [index, docs, withLoader, param, ctx]);
 }
 
-/** Alberi separati: addChildren muta la root, quindi ognuno ha la sua. */
+/** Separate trees: addChildren mutates the root, so each one has its own. */
 export const okTree = build(false);
 export const tree = build(true);

@@ -10,12 +10,12 @@ export function defineSeo(site: Metadata): {
     input: SeoInput<Ctx>,
   ) => (ctx: Ctx) => Head;
 } {
-  // alternates (canonical, hreflang) sono solo per pagina: il sito li ignora
+  // alternates (canonical, hreflang) are per-page only: the site ignores them
   const { alternates: _ignored, ...base } = site;
   return {
-    // jsonLd del sito NON va nel root head: TanStack concatena gli script di tutte
-    // le route, quindi il grafo del sito comparirebbe due volte (root + pagina).
-    // Lo emette seo(), che unisce nodi del sito e della pagina in un solo @graph.
+    // The site's jsonLd must NOT go in the root head: TanStack concatenates the scripts of all
+    // routes, so the site graph would appear twice (root + page).
+    // seo() emits it, merging site and page nodes into a single @graph.
     rootHead: () => {
       const { jsonLd: _jsonLd, ...rootBase } = base;
       return toHead(mergeMetadata(rootBase, {}));

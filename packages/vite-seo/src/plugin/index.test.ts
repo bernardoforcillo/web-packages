@@ -228,17 +228,17 @@ describe("viteSeo content-site build", () => {
     const feed = get("feed.xml")!;
     expect(XMLValidator.validate(feed)).toBe(true);
     expect(feed).toContain("https://example.com/blog/ciao");
-    expect(feed).toContain("Ciao: mondo &amp; co");
-    expect(feed).not.toContain("Bozza");
+    expect(feed).toContain("Hello: world &amp; co");
+    expect(feed).not.toContain("Draft");
     expect(get("llms.txt")).toContain("https://example.com/blog/ciao");
     expect(get("sitemap.xml")).toContain("<loc>https://example.com/blog/ciao</loc>");
     expect(names).not.toContain("atom.xml");
     expect(names).not.toContain("bozza.md");
-    expect(get("blog/ciao.md")).toContain("Corpo del post con ]]> e & dentro.");
+    expect(get("blog/ciao.md")).toContain("Post body with ]]> and & inside.");
     expect(get("blog/ciao.md")).toMatch(/^---\ntitle: /);
-    expect(get("index.md")).toContain("Benvenuti nel sito.");
+    expect(get("index.md")).toContain("Welcome to the site.");
     expect(get("index.html")).toContain(
-      '<link rel="alternate" type="application/rss+xml" title="Il mio sito &amp; blog" href="/feed.xml">',
+      '<link rel="alternate" type="application/rss+xml" title="My site &amp; blog" href="/feed.xml">',
     );
   }, 60000);
 
@@ -249,9 +249,9 @@ describe("viteSeo content-site build", () => {
     expect(get("index.md")).not.toContain("HOME-ROUTE");
     const full = get("llms-full.txt")!;
     expect(full).not.toContain("HOME-ROUTE");
-    expect(full.indexOf("Corpo del post")).toBeGreaterThan(-1);
-    expect(full.indexOf("ABOUT-ROUTE-TEXT")).toBeGreaterThan(full.indexOf("Corpo del post"));
-    expect(full.indexOf("Benvenuti nel sito.")).toBeLessThan(full.indexOf("ABOUT-ROUTE-TEXT"));
+    expect(full.indexOf("Post body")).toBeGreaterThan(-1);
+    expect(full.indexOf("ABOUT-ROUTE-TEXT")).toBeGreaterThan(full.indexOf("Post body"));
+    expect(full.indexOf("Welcome to the site.")).toBeLessThan(full.indexOf("ABOUT-ROUTE-TEXT"));
     expect(names).toContain("seo-routes.json");
   }, 60000);
 
@@ -409,7 +409,7 @@ describe("viteSeo content dev", () => {
       expect(full.body).toContain("ABOUT-ROUTE-TEXT");
       const md = (await call("/blog/ciao.md")) as { type: string; body: string };
       expect(md.type).toBe("text/markdown; charset=utf-8");
-      expect(md.body).toContain("Corpo del post");
+      expect(md.body).toContain("Post body");
       expect(((await call("/index.md")) as { type: string }).type).toBe("text/markdown; charset=utf-8");
       expect(((await call("/about.md")) as { body: string }).body).toContain("ABOUT-ROUTE-TEXT");
       expect(await call("/altro")).toBe("next");

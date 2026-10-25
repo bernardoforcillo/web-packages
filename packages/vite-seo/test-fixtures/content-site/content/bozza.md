@@ -1,5 +1,5 @@
 ---
-title: Bozza
+title: Draft
 draft: true
 ---
-Non pubblicare.
+Do not publish.

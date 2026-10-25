@@ -1,4 +1,4 @@
 ---
 title: Home
 ---
-Benvenuti nel sito.
+Welcome to the site.

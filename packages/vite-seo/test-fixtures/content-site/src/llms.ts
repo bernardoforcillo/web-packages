@@ -1,6 +1,6 @@
 export default (ctx: { content: { title: string; url: string; description?: string }[]; siteUrl?: string }) => ({
-  title: "Il mio sito",
-  summary: "Sito di prova",
+  title: "My site",
+  summary: "Test site",
   sections: [
     {
       title: "Contenuti",
