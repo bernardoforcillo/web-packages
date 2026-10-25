@@ -11,11 +11,13 @@ on:
       - "crates/**/Cargo.toml"
       - "crates/**/Cargo.lock"
       - "crates/**/changelog.md"
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: write
+  id-token: write
   pull-requests: write
 
 jobs:
@@ -29,6 +31,7 @@ jobs:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@^11.5.1
       - run: pnpm install --frozen-lockfile
       # Opens or updates the "Version Packages" PR. When that PR is merged, the
       # same step publishes to npm and crates.io, then creates GitHub releases.
@@ -40,5 +43,4 @@ jobs:
           commit-message: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
