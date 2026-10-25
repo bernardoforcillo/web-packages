@@ -6,7 +6,7 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && node scripts/sync-cargo-version.mjs",
     "release": "pnpm build && changeset publish",
     "test": "turbo run test",
     "prepare": "husky"
