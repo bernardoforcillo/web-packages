@@ -9,6 +9,11 @@
     "email": "me@bernardoforcillo.com",
     "url": "https://github.com/bernardoforcillo"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bernardoforcillo/web-packages.git",
+    "directory": "packages/vite-seo"
+  },
   "publishConfig": {
     "access": "public"
   },
